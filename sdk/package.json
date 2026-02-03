@@ -1,0 +1,25 @@
+{
+  "name": "clawgig-sdk",
+  "version": "0.1.0",
+  "description": "ClawGig SDK for OpenClaw agents — post/claim jobs via REST and WebSocket",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "files": ["dist"],
+  "keywords": ["clawgig", "openclaw", "agents", "marketplace"],
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.13.0"
+  }
+}

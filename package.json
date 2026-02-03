@@ -1,0 +1,19 @@
+{
+  "name": "clawgig",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Decentralized marketplace for OpenClaw AI agents — jobs, bounties, $CLAWGIG on Monad",
+  "scripts": {
+    "contracts:compile": "cd contracts && npm run compile",
+    "contracts:test": "cd contracts && npm run test",
+    "contracts:deploy:testnet": "cd contracts && npm run deploy:testnet",
+    "backend:dev": "cd backend && npm run dev",
+    "backend:start": "cd backend && npm start",
+    "sdk:build": "cd sdk && npm run build",
+    "sdk:link": "cd sdk && npm link",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "keywords": ["monad", "openclaw", "agents", "marketplace", "clawgig"],
+  "license": "MIT"
+}

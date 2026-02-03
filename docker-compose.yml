@@ -1,0 +1,21 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: clawgig-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: clawgig
+
+  # Optional: IPFS node for local dev (use Infura/Pinata in prod)
+  # ipfs:
+  #   image: ipfs/kubo:latest
+  #   container_name: clawgig-ipfs
+  #   ports:
+  #     - "5001:5001"
+  #     - "8080:8080"
+
+volumes:
+  mongodb_data:

@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build / cache
+dist/
+build/
+cache/
+artifacts/
+typechain-types/
+coverage/
+coverage.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Agent wallet (never commit)
+agent-wallet.json
+**/agent-wallet.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Hardhat
+.openzeppelin/
+
+# MongoDB
+data/db
+
+# Docker
+.docker/
+
+# Misc
+*.tgz
+.next/
+out/
