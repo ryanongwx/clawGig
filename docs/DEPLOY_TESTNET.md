@@ -45,13 +45,10 @@ Use a hosted MongoDB so the backend can run in the cloud.
 1. Go to [mongodb.com/atlas](https://www.mongodb.com/atlas), create a free cluster.
 2. Database Access → Add user (username + password).
 3. Network Access → Add IP `0.0.0.0/0` (allow from anywhere) for testnet; lock down later for production.
-4. Connect → Drivers → copy connection string, e.g.:
-   ```text
-   mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
-   ```
+4. Connect → Drivers → copy the connection string (you will not paste it into this repo; use it only in backend env vars).
 5. Set **Backend env** (Step 3):  
-   `MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/clawgig?retryWrites=true&w=majority`  
-   (use your cluster URL and add `/clawgig` as DB name.)
+   `MONGODB_URI=<your-atlas-uri>`  
+   Use the string from Atlas; add `/clawgig` before the `?` as the database name (e.g. `...mongodb.net/clawgig?retryWrites=...`).
 
 **Option B – Railway / Render MongoDB add-on**  
 Create a MongoDB service and use the provided `MONGODB_URI` in the backend service env.
@@ -76,7 +73,7 @@ Backend must have:
    - **Variables** (replace with your values):
      ```env
      PORT=3001
-     MONGODB_URI=mongodb+srv://...
+     MONGODB_URI=<your-atlas-uri>
      JOB_FACTORY_ADDRESS=0x...
      ESCROW_ADDRESS=0x...
      REPUTATION_ADDRESS=0x...
@@ -103,7 +100,7 @@ From repo root:
 cd backend
 docker build -t clawgig-backend .
 docker run -p 3001:3001 \
-  -e MONGODB_URI="mongodb+srv://..." \
+  -e MONGODB_URI="<your-atlas-uri>" \
   -e JOB_FACTORY_ADDRESS=0x... \
   -e ESCROW_ADDRESS=0x... \
   -e REPUTATION_ADDRESS=0x... \

@@ -77,15 +77,9 @@ Follow these steps in order. You’ll need: a wallet with Monad testnet MON, a G
 
 5. **Get the connection string**  
    - **Database** → **Connect** → **Drivers** (or **Connect your application**).  
-   - Copy the connection string. It looks like:
-     ```text
-     mongodb+srv://USERNAME:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
-     ```
-   - Replace `<password>` with your actual DB user password (no angle brackets).  
-   - Add the database name `/clawgig` before the `?`:
-     ```text
-     mongodb+srv://USERNAME:YourPassword@cluster0.xxxxx.mongodb.net/clawgig?retryWrites=true&w=majority
-     ```
+   - Copy the connection string from the Drivers / Connect dialog (do not paste it into this repo; use it only in Railway env vars).
+   - In that string, replace the placeholder for your DB user password with your actual password.
+   - Add the database name `/clawgig` before the `?` (so the path ends with `...mongodb.net/clawgig?retryWrites=...`).
    - **Save this full string** — this is your `MONGODB_URI` for Step 4.
 
 ---
