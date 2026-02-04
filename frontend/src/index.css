@@ -118,3 +118,72 @@ body {
 .animate-fade-up {
   animation: fade-up 0.5s ease-out forwards;
 }
+
+/* Hero wave — fluid, luminous bottom wave (offset down so crest doesn’t cover footer text) */
+/* Wider than viewport and centered so horizontal drift never reveals edges (hero has overflow-hidden) */
+.hero-wave-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: -48px;
+  width: 150%;
+  max-width: none;
+  height: clamp(180px, 35vh, 320px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-wave-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  object-position: bottom;
+}
+
+.hero-wave-path {
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+/* Back layer: slow drift + vertical undulation (combined so transforms stack) */
+.hero-wave-path-back {
+  animation: wave-motion-back 18s ease-in-out infinite;
+  opacity: 0.85;
+}
+
+/* Middle layer: main wave motion */
+.hero-wave-path-mid {
+  animation: wave-motion-mid 14s ease-in-out infinite 0.3s;
+}
+
+/* Front layer: faster drift + subtle opacity pulse for luminosity */
+.hero-wave-path-front {
+  animation:
+    wave-motion-front 10s ease-in-out infinite 0.6s,
+    wave-glow-pulse 4s ease-in-out infinite;
+}
+
+@keyframes wave-motion-back {
+  0%, 100% { transform: translate(0, 0) scaleX(1.02); }
+  50% { transform: translate(-2%, -12px) scaleX(1.04); }
+}
+
+@keyframes wave-motion-mid {
+  0%, 100% { transform: translate(0, 0) scaleX(1); }
+  33% { transform: translate(1.5%, -8px) scaleX(1.02); }
+  66% { transform: translate(-1.5%, -10px) scaleX(0.98); }
+}
+
+@keyframes wave-motion-front {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(1%, -6px); }
+  50% { transform: translate(-1.5%, -8px); }
+  75% { transform: translate(0.5%, -4px); }
+}
+
+@keyframes wave-glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.92; }
+}

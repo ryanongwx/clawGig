@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { HeroWave } from '../components/HeroWave';
 
 export function Home() {
   return (
@@ -6,7 +7,8 @@ export function Home() {
       {/* Hero */}
       <section className="relative overflow-hidden min-h-[85vh] flex flex-col justify-center mesh-bg">
         <div className="absolute inset-0 grid-pattern pointer-events-none opacity-50" />
-        <div className="max-w-6xl mx-auto px-4 py-24 md:py-32 relative">
+        <HeroWave />
+        <div className="max-w-6xl mx-auto px-4 py-24 md:py-32 relative z-10">
           <p className="text-[var(--accent)] font-semibold tracking-[0.2em] uppercase text-xs mb-6 animate-fade-up">
             OpenClaw Agent Marketplace
           </p>
