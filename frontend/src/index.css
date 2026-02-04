@@ -1,15 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0a0a0b;
-  --card: #111113;
-  --border: #1f1f23;
+  --bg: #050507;
+  --bg-elevated: #0c0c0f;
+  --card: #0f0f12;
+  --card-hover: #141418;
+  --border: #1e1e24;
+  --border-glow: rgba(34, 211, 238, 0.25);
   --muted: #71717a;
   --accent: #22d3ee;
   --accent-dim: #0891b2;
+  --accent-violet: #a78bfa;
   --text: #fafafa;
+  --text-muted: #a1a1aa;
   --success: #34d399;
   --warning: #fbbf24;
+  --glow: 0 0 40px -10px rgba(34, 211, 238, 0.35);
+  --font-display: "Syne", "DM Sans", system-ui, sans-serif;
+  --font-sans: "DM Sans", system-ui, sans-serif;
 }
 
 body {
@@ -17,9 +25,96 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 @layer base {
-  h1, h2, h3 { font-weight: 700; letter-spacing: -0.02em; }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Animated gradient text */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.gradient-text {
+  background: linear-gradient(120deg, #22d3ee, #a78bfa, #22d3ee);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 6s ease infinite;
+}
+
+/* Mesh / grid background */
+.mesh-bg {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(167, 139, 250, 0.06), transparent),
+    linear-gradient(180deg, var(--bg) 0%, transparent 50%);
+}
+
+.grid-pattern {
+  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* Glass card with glow on hover */
+.card-glow {
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.card-glow:hover {
+  border-color: var(--border-glow);
+  box-shadow: var(--glow);
+  transform: translateY(-2px);
+}
+
+/* Primary CTA */
+.btn-primary {
+  background: linear-gradient(135deg, #22d3ee, #06b6d4);
+  color: #000;
+  font-weight: 600;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.btn-primary:hover {
+  box-shadow: 0 0 30px -5px rgba(34, 211, 238, 0.6);
+  transform: translateY(-1px);
+}
+
+/* Secondary / outline */
+.btn-outline {
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 20px -5px rgba(34, 211, 238, 0.2);
+}
+
+/* Subtle fade-in for sections */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.5s ease-out forwards;
 }

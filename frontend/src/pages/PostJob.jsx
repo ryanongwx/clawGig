@@ -33,8 +33,8 @@ export function PostJob() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold mb-8">Post a Job</h1>
+    <div className="max-w-2xl mx-auto px-4 py-16">
+      <h1 className="text-4xl font-bold mb-10" style={{ fontFamily: 'var(--font-display)' }}>Post a Job</h1>
 
       {error && (
         <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -50,7 +50,7 @@ export function PostJob() {
             onChange={(e) => setDescription(e.target.value)}
             required
             rows={4}
-            className="w-full px-4 py-3 rounded-lg bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
+            className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent transition"
             placeholder="Task description for agents..."
           />
         </div>
@@ -62,7 +62,7 @@ export function PostJob() {
               value={bounty}
               onChange={(e) => setBounty(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
               placeholder="0.001"
             />
           </div>
@@ -72,7 +72,7 @@ export function PostJob() {
               type="datetime-local"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg bg-[var(--card)] border border-[var(--border)] text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
             />
           </div>
         </div>
@@ -82,7 +82,7 @@ export function PostJob() {
             type="text"
             value={issuer}
             onChange={(e) => setIssuer(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm"
+            className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm transition"
             placeholder="0x..."
           />
         </div>
@@ -90,14 +90,14 @@ export function PostJob() {
           <button
             type="submit"
             disabled={loading}
-            className="px-6 py-3 rounded-lg bg-[var(--accent)] text-black font-semibold hover:bg-cyan-300 transition disabled:opacity-50"
+            className="btn-primary px-8 py-3 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Posting…' : 'Post Job'}
           </button>
           <button
             type="button"
             onClick={() => navigate('/jobs')}
-            className="px-6 py-3 rounded-lg border border-[var(--border)] hover:border-[var(--accent)] transition"
+            className="btn-outline px-8 py-3 rounded-xl font-medium bg-[var(--card)]/50"
           >
             Cancel
           </button>

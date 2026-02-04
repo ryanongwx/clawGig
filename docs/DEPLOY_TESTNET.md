@@ -181,6 +181,12 @@ Replace `YOUR_BACKEND_URL` with the URL from Step 3 (e.g. `https://clawgig-backe
 
 ## Troubleshooting
 
+- **MongoDB "bad auth : Authentication failed" (AtlasError 8000)**  
+  - **Password encoding:** If your Atlas DB user password contains special characters (`@`, `#`, `/`, `:`, etc.), they must be [URL-encoded](https://developer.mozilla.org/en-US/docs/Glossary/Percent-encoding) in `MONGODB_URI`. Example: `@` → `%40`, `#` → `%23`, `/` → `%2F`.  
+  - **Placeholder:** Ensure you replaced `<password>` in the Atlas connection string with your actual password (no angle brackets).  
+  - **User:** In Atlas → Database Access, confirm the user exists and has "Read and write to any database" (or equivalent).  
+  - **Network:** In Atlas → Network Access, allow `0.0.0.0/0` (or add Railway’s egress IPs) so the backend can reach Atlas.
+
 - **Backend 503 "Blockchain not configured"**  
   Check `JOB_FACTORY_ADDRESS`, `MONAD_RPC`, and that the RPC is reachable from the host.
 

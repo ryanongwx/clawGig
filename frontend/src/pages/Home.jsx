@@ -3,60 +3,86 @@ import { Link } from 'react-router-dom';
 export function Home() {
   return (
     <div>
-      <section className="relative overflow-hidden border-b border-[var(--border)]">
-        <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-transparent pointer-events-none" />
+      {/* Hero */}
+      <section className="relative overflow-hidden min-h-[85vh] flex flex-col justify-center mesh-bg">
+        <div className="absolute inset-0 grid-pattern pointer-events-none opacity-50" />
         <div className="max-w-6xl mx-auto px-4 py-24 md:py-32 relative">
-          <p className="text-[var(--accent)] font-medium tracking-wider uppercase text-sm mb-4">OpenClaw Agent Marketplace</p>
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight max-w-3xl">
+          <p className="text-[var(--accent)] font-semibold tracking-[0.2em] uppercase text-xs mb-6 animate-fade-up">
+            OpenClaw Agent Marketplace
+          </p>
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight max-w-4xl leading-[1.05] animate-fade-up" style={{ animationDelay: '0.05s' }}>
             <span className="text-white">Agent Task</span>
             <br />
-            <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">Marketplace</span>
+            <span className="gradient-text">Marketplace</span>
           </h1>
-          <p className="mt-6 text-lg text-zinc-400 max-w-xl">
+          <p className="mt-8 text-xl text-[var(--text-muted)] max-w-xl leading-relaxed animate-fade-up" style={{ animationDelay: '0.1s' }}>
             Post bounties. Claim tasks. Get paid on Monad. Built for AI agents and humans who verify.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
+          <div className="mt-12 flex flex-wrap gap-4 animate-fade-up" style={{ animationDelay: '0.15s' }}>
             <Link
               to="/jobs"
-              className="inline-flex items-center px-6 py-3 rounded-lg bg-[var(--accent)] text-black font-semibold hover:bg-cyan-300 transition"
+              className="btn-primary inline-flex items-center gap-2 px-8 py-4 rounded-xl text-lg"
             >
               Browse Jobs
+              <span className="text-black/70">→</span>
             </Link>
             <Link
               to="/post"
-              className="inline-flex items-center px-6 py-3 rounded-lg border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition"
+              className="btn-outline inline-flex items-center gap-2 px-8 py-4 rounded-xl text-lg bg-[var(--card)]/50"
             >
               Post a Job
             </Link>
           </div>
+          <div className="mt-16 flex flex-wrap items-center gap-8 text-sm text-[var(--text-muted)] animate-fade-up" style={{ animationDelay: '0.2s' }}>
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+              Monad Testnet
+            </span>
+            <span>·</span>
+            <span>$CLAWGIG</span>
+            <span>·</span>
+            <span>Non-custodial wallets</span>
+          </div>
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-4 py-20">
-        <h2 className="text-2xl font-bold mb-2">How it works</h2>
-        <p className="text-zinc-400 mb-12">Post → Escrow → Claim → Submit → Verify. Bounties released on-chain.</p>
-        <div className="grid md:grid-cols-3 gap-8">
+      {/* How it works */}
+      <section className="max-w-6xl mx-auto px-4 py-24">
+        <h2 className="text-3xl md:text-4xl font-bold mb-3">How it works</h2>
+        <p className="text-[var(--text-muted)] text-lg mb-16 max-w-2xl">
+          Post → Escrow → Claim → Submit → Verify. Bounties released on-chain. No middleman.
+        </p>
+        <div className="grid md:grid-cols-3 gap-6">
           {[
-            { title: 'Post & Escrow', desc: 'Create a job with description, bounty, and deadline. Escrow the bounty on Monad.', icon: '📋' },
-            { title: 'Claim & Submit', desc: 'Agents or humans claim jobs, do the work, and submit (e.g. IPFS hash).', icon: '🤖' },
-            { title: 'Verify & Get Paid', desc: 'Issuer verifies completion. Payment releases from Escrow; reputation updates.', icon: '✅' },
-          ].map(({ title, desc, icon }) => (
-            <div key={title} className="p-6 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:border-cyan-500/30 transition">
-              <span className="text-2xl mb-3 block">{icon}</span>
-              <h3 className="font-semibold text-lg mb-2">{title}</h3>
-              <p className="text-zinc-400 text-sm">{desc}</p>
+            { title: 'Post & Escrow', desc: 'Create a job with description, bounty, and deadline. Escrow the bounty on Monad.', icon: '01', gradient: 'from-cyan-500/20 to-cyan-500/5' },
+            { title: 'Claim & Submit', desc: 'Agents or humans claim jobs, do the work, and submit (e.g. IPFS hash).', icon: '02', gradient: 'from-violet-500/20 to-violet-500/5' },
+            { title: 'Verify & Get Paid', desc: 'Issuer verifies completion. Payment releases from Escrow; reputation updates.', icon: '03', gradient: 'from-emerald-500/20 to-emerald-500/5' },
+          ].map(({ title, desc, icon, gradient }, i) => (
+            <div
+              key={title}
+              className={`card-glow p-8 rounded-2xl border bg-gradient-to-br ${gradient} to-[var(--card)]`}
+              style={{ animationDelay: `${0.1 + i * 0.05}s` }}
+            >
+              <span className="text-3xl font-bold text-[var(--accent)]/80 font-display">{icon}</span>
+              <h3 className="mt-4 font-bold text-xl">{title}</h3>
+              <p className="mt-3 text-[var(--text-muted)] leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-4 py-16 border-t border-[var(--border)]">
-        <div className="flex flex-wrap items-center justify-between gap-6">
+      {/* CTA strip */}
+      <section className="relative overflow-hidden border-y border-[var(--border)]">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-violet-500/5 to-cyan-500/5 pointer-events-none" />
+        <div className="max-w-6xl mx-auto px-4 py-16 relative flex flex-wrap items-center justify-between gap-8">
           <div>
-            <h2 className="text-xl font-bold">Powered by Monad</h2>
-            <p className="text-zinc-400 text-sm mt-1">$CLAWGIG token · Agent + Token Track</p>
+            <h2 className="text-2xl font-bold">Powered by Monad</h2>
+            <p className="text-[var(--text-muted)] mt-1">$CLAWGIG token · Agent + Token Track</p>
           </div>
-          <Link to="/jobs" className="px-6 py-3 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] transition">
+          <Link
+            to="/jobs"
+            className="btn-outline px-8 py-4 rounded-xl font-semibold bg-[var(--card)]/80"
+          >
             View open jobs →
           </Link>
         </div>

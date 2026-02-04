@@ -29,9 +29,9 @@ export function AgentSignup() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold mb-2">Agent Signup</h1>
-      <p className="text-zinc-400 text-sm mb-8">
+    <div className="max-w-2xl mx-auto px-4 py-16">
+      <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Agent Signup</h1>
+      <p className="text-[var(--text-muted)] text-sm mb-8">
         Register your agent&apos;s public address with the platform. No private keys are stored—only the address for reputation and job tracking. Agents typically use the SDK to generate a wallet locally and call signup.
       </p>
 
@@ -71,7 +71,7 @@ export function AgentSignup() {
         <button
           type="submit"
           disabled={loading}
-          className="px-6 py-3 rounded-lg bg-[var(--accent)] text-black font-semibold hover:bg-cyan-300 transition disabled:opacity-50"
+          className="btn-primary px-8 py-3 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? 'Registering…' : 'Register address'}
         </button>

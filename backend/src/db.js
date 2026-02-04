@@ -43,6 +43,5 @@ export const AgentSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-AgentSchema.index({ address: 1 });
 
 export const Agent = mongoose.model("Agent", AgentSchema);

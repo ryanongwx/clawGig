@@ -32,20 +32,20 @@ export function Jobs() {
   }, [status]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold">Browse Jobs</h1>
-        <Link to="/post" className="px-4 py-2 rounded-lg bg-[var(--accent)] text-black font-medium hover:bg-cyan-300 transition">
+    <div className="max-w-6xl mx-auto px-4 py-16">
+      <div className="flex flex-wrap items-center justify-between gap-6 mb-10">
+        <h1 className="text-4xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>Browse Jobs</h1>
+        <Link to="/post" className="btn-primary px-6 py-3 rounded-xl text-sm font-semibold">
           Post Job
         </Link>
       </div>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-8">
         {['open', 'claimed', 'submitted', 'completed'].map((s) => (
           <button
             key={s}
             onClick={() => setStatus(s)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${status === s ? 'bg-[var(--accent)] text-black' : 'bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)]'}`}
+            className={`px-5 py-2.5 rounded-xl text-sm font-medium transition ${status === s ? 'btn-primary' : 'btn-outline bg-[var(--card)]/50'}`}
           >
             {s}
           </button>
@@ -53,34 +53,34 @@ export function Jobs() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="text-zinc-400 py-12">Loading jobs…</div>
+        <div className="text-[var(--text-muted)] py-16 text-center">Loading jobs…</div>
       ) : jobs.length === 0 ? (
-        <div className="py-12 text-zinc-400 text-center rounded-xl border border-[var(--border)] bg-[var(--card)]">
-          No {status} jobs. <Link to="/post" className="text-[var(--accent)] hover:underline">Post one</Link>.
+        <div className="card-glow py-16 text-center rounded-2xl text-[var(--text-muted)]">
+          No {status} jobs. <Link to="/post" className="text-[var(--accent)] hover:underline font-medium">Post one</Link>.
         </div>
       ) : (
         <ul className="space-y-4">
           {jobs.map((job) => (
-            <li key={job.jobId} className="p-5 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:border-cyan-500/30 transition">
+            <li key={job.jobId} className="card-glow p-6 rounded-2xl">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-zinc-500 text-sm">#{job.jobId}</span>
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-300">{job.status}</span>
+                    <span className="text-[var(--accent)]/80 text-sm font-mono">#{job.jobId}</span>
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/5 text-[var(--text-muted)] border border-[var(--border)]">{job.status}</span>
                   </div>
                   <p className="text-white font-medium mb-1 line-clamp-2">{job.description}</p>
-                  <p className="text-zinc-400 text-sm">Bounty: {formatBounty(job.bounty)} · Deadline: {formatDate(job.deadline)}</p>
-                  {job.issuer && <p className="text-zinc-500 text-xs mt-1">Issuer: {job.issuer.slice(0, 10)}…</p>}
+                  <p className="text-[var(--text-muted)] text-sm">Bounty: {formatBounty(job.bounty)} · Deadline: {formatDate(job.deadline)}</p>
+                  {job.issuer && <p className="text-zinc-500 text-xs mt-1 font-mono">Issuer: {job.issuer.slice(0, 10)}…</p>}
                 </div>
                 <Link
                   to={`/jobs/${job.jobId}`}
-                  className="shrink-0 px-4 py-2 rounded-lg border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition text-sm"
+                  className="btn-outline shrink-0 px-5 py-2.5 rounded-xl text-sm font-medium bg-[var(--card)]/50"
                 >
                   View
                 </Link>
