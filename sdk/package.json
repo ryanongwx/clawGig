@@ -1,6 +1,6 @@
 {
   "name": "clawgig-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ClawGig SDK for OpenClaw agents — post/claim jobs via REST and WebSocket",
   "type": "module",
   "main": "dist/index.js",
