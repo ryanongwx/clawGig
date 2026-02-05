@@ -1,44 +1,126 @@
 import { ethers } from "ethers";
 import { Job } from "../db.js";
-import { getContractJobFactory, getContractEscrow, getEscrowAtAddress, getEscrowDeposit, getEscrowJobFactory, getContractReputation, getReputationScore } from "../contracts.js";
-import { broadcastJobClaimed } from "../ws.js";
+import {
+  getContractJobFactory,
+  getEscrowAtAddress,
+  getEscrowDeposit,
+  getEscrowJobFactory,
+  getEscrowUSDCAddress,
+  getEscrowUSDCAtAddress,
+  getContractReputation,
+  getReputationScore,
+  isMainnet,
+} from "../contracts.js";
+import {
+  broadcastJobClaimed,
+  broadcastWorkSubmitted,
+  broadcastJobCompleted,
+  broadcastJobCancelled,
+  broadcastJobReopened,
+} from "../ws.js";
+import {
+  buildPostMessage,
+  buildEscrowMessage,
+  buildCancelMessage,
+  buildExpireMessage,
+  buildVerifyMessage,
+  verifyIssuerSignature,
+  requireIssuerSignatureForPost,
+  requireIssuerSignatureForEscrow,
+  requireIssuerSignatureForCancel,
+  requireIssuerSignatureForExpire,
+  requireIssuerSignatureForVerify,
+} from "../issuerAuth.js";
+import {
+  buildClaimMessage,
+  buildSubmitMessage,
+  verifyCompleterSignature,
+  requireCompleterSignatureForClaim,
+  requireCompleterSignatureForSubmit,
+} from "../completerAuth.js";
+import {
+  parseJobId,
+  validateDescription,
+  validateBounty,
+  validateDeadline,
+  capSearchQuery,
+} from "../validation.js";
+
+const TOKEN_MON = 0;
+const TOKEN_USDC = 1;
 
 /**
  * POST /jobs/post
- * Body: { description, bounty, deadline, issuer, signature? } — issuer posts job; optional wallet signature for auth.
+ * Body: { description, bounty, deadline, issuer, bountyToken?, signature? } — bountyToken "MON" (default) or "USDC" (mainnet only).
+ * If REQUIRE_ISSUER_SIGNATURE_FOR_POST=true, body must include { signature }; signer must equal issuer (proves control of issuer address).
  */
 export async function postJob(req, res) {
   try {
-    const { description, bounty, deadline, issuer } = req.body;
+    const { description, bounty, deadline, issuer, bountyToken: rawToken, signature } = req.body || {};
     if (!description || !bounty || !deadline || !issuer) {
       return res.status(400).json({ error: "Missing description, bounty, deadline, or issuer" });
     }
-    const factory = getContractJobFactory();
-    if (!factory) {
-      return res.status(503).json({ error: "Blockchain not configured" });
+    if (!ethers.isAddress(issuer)) {
+      return res.status(400).json({ error: "Invalid issuer address" });
     }
+    const descErr = validateDescription(description);
+    if (descErr) return res.status(400).json({ error: descErr });
+    const bountyErr = validateBounty(bounty);
+    if (bountyErr) return res.status(400).json({ error: bountyErr });
+    const deadlineErr = validateDeadline(deadline);
+    if (deadlineErr) return res.status(400).json({ error: deadlineErr });
+    const normalizedIssuer = ethers.getAddress(issuer);
+    if (requireIssuerSignatureForPost()) {
+      if (!signature) {
+        return res.status(403).json({
+          error: "Issuer signature required for post. Sign the message from the issuer wallet and send { signature }.",
+        });
+      }
+      const message = buildPostMessage(normalizedIssuer);
+      const result = verifyIssuerSignature(message, signature, normalizedIssuer);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
+    const bountyToken = (rawToken || "MON").toUpperCase() === "USDC" ? "USDC" : "MON";
+    if (bountyToken === "USDC" && !isMainnet()) {
+      return res.status(400).json({ error: "USDC bounties only on Monad mainnet. Use MON on testnet." });
+    }
+    const factory = getContractJobFactory();
+    if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+
     const descriptionHash = ethers.keccak256(ethers.toUtf8Bytes(description));
     const deadlineNum = Math.floor(new Date(deadline).getTime() / 1000);
-    const tx = await factory.postJob(descriptionHash, bounty, deadlineNum);
+
+    let tx;
+    if (bountyToken === "USDC") {
+      const escrowUSDCAddr = await getEscrowUSDCAddress();
+      if (!escrowUSDCAddr) {
+        return res.status(400).json({ error: "USDC escrow not configured. Set EscrowUSDC on JobFactory for mainnet." });
+      }
+      tx = await factory.postJobWithToken(descriptionHash, bounty, deadlineNum, TOKEN_USDC);
+    } else {
+      tx = await factory.postJob(descriptionHash, bounty, deadlineNum);
+    }
     const receipt = await tx.wait();
     const event = receipt.logs?.find((l) => l.fragment?.name === "JobPosted");
     const jobId = event ? Number(event.args[0]) : null;
     if (jobId == null) return res.status(500).json({ error: "Job creation failed" });
+
     await Job.findOneAndUpdate(
       { jobId },
       {
         jobId,
-        issuer,
+        issuer: normalizedIssuer,
         descriptionHash,
         description,
         bounty: String(bounty),
+        bountyToken,
         deadline: new Date(deadlineNum * 1000),
         status: "open",
         txHash: receipt.hash,
       },
       { upsert: true, new: true }
     );
-    return res.json({ jobId, txHash: receipt.hash });
+    return res.json({ jobId, txHash: receipt.hash, bountyToken });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Post job failed" });
@@ -47,28 +129,58 @@ export async function postJob(req, res) {
 
 /**
  * POST /jobs/:jobId/escrow
- * Body: { bountyWei } — backend wallet deposits bounty into the Escrow that JobFactory uses on-chain (no .env ESCROW_ADDRESS needed).
+ * Body: { bountyWei?, signature? } — backend deposits bounty into Escrow (MON) or EscrowUSDC (USDC).
+ * If REQUIRE_ISSUER_SIGNATURE_FOR_ESCROW=true, body must include { signature }; signer must equal job.issuer (only issuer can lock bounty).
  */
 export async function escrowJob(req, res) {
   try {
-    const { jobId } = req.params;
-    const { bountyWei } = req.body;
-    const job = await Job.findOne({ jobId: Number(jobId), status: "open" }).lean();
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const { bountyWei, signature } = req.body || {};
+    const job = await Job.findOne({ jobId, status: "open" }).lean();
     if (!job) return res.status(404).json({ error: "Job not found or not open" });
+    if (requireIssuerSignatureForEscrow()) {
+      if (!signature) {
+        return res.status(403).json({
+          error: "Issuer signature required for escrow. Sign the message from the issuer wallet and send { signature }.",
+        });
+      }
+      const message = buildEscrowMessage(jobId);
+      const result = verifyIssuerSignature(message, signature, job.issuer);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
     const amount = bountyWei ? BigInt(bountyWei) : BigInt(job.bounty);
     if (amount <= 0n) return res.status(400).json({ error: "Invalid bounty amount" });
     const factory = getContractJobFactory();
     if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+
+    if (job.bountyToken === "USDC") {
+      const escrowUSDCAddr = await getEscrowUSDCAddress();
+      if (!escrowUSDCAddr) return res.status(503).json({ error: "EscrowUSDC not configured" });
+      const escrowUSDC = getEscrowUSDCAtAddress(escrowUSDCAddr);
+      if (!escrowUSDC) return res.status(503).json({ error: "PRIVATE_KEY not configured" });
+      const tx = await escrowUSDC.deposit(jobId, amount, { gasLimit: 150000 });
+      const receipt = await tx.wait();
+      return res.json({
+        jobId,
+        txHash: receipt.hash,
+        escrowAddress: escrowUSDCAddr,
+        bountyToken: "USDC",
+        checkOnExplorer: `Verify EscrowUSDC ${escrowUSDCAddr} has deposits(${jobId}) > 0`,
+      });
+    }
+
     const escrowAddress = await factory.escrow();
     const escrowContract = getEscrowAtAddress(escrowAddress);
     if (!escrowContract) return res.status(503).json({ error: "PRIVATE_KEY not configured" });
-    // Use explicit gasLimit to avoid estimateGas failing with "missing revert data" (e.g. insufficient funds)
-    const tx = await escrowContract.deposit(Number(jobId), { value: amount, gasLimit: 100000 });
+    const tx = await escrowContract.deposit(jobId, { value: amount, gasLimit: 100000 });
     const receipt = await tx.wait();
     return res.json({
-      jobId: Number(jobId),
+      jobId,
       txHash: receipt.hash,
       escrowAddress,
+      bountyToken: "MON",
       checkOnExplorer: `Verify Escrow ${escrowAddress} has deposits(${jobId}) > 0 and JobFactory.escrow() === ${escrowAddress}`,
     });
   } catch (err) {
@@ -76,9 +188,9 @@ export async function escrowJob(req, res) {
     const msg = err.message || "Escrow failed";
     const isRevert = msg.includes("revert") || msg.includes("reverted");
     const hint = isRevert
-      ? " Backend wallet (PRIVATE_KEY) may not have enough testnet MONAD for this bounty. Try a smaller bountyWei (e.g. 1000000000000000 = 0.001 MONAD) in the request body."
+      ? " Backend wallet (PRIVATE_KEY) may not have enough testnet MON for this bounty, or (USDC) insufficient allowance/balance."
       : msg.includes("insufficient")
-        ? " Ensure backend wallet has bounty + gas."
+        ? " Ensure backend wallet has bounty + gas (MON) or USDC balance + approval (USDC)."
         : "";
     return res.status(500).json({ error: msg + hint });
   }
@@ -86,26 +198,41 @@ export async function escrowJob(req, res) {
 
 /**
  * POST /jobs/:jobId/claim
- * Body: { completer } — marks job as claimed on-chain and in DB; broadcasts to WebSocket.
+ * Body: { completer, signature? } — marks job as claimed on-chain and in DB; broadcasts to WebSocket.
+ * If REQUIRE_COMPLETER_SIGNATURE_FOR_CLAIM=true, body must include { signature }; signer must equal completer (only completer wallet can claim).
  */
 export async function claimJob(req, res) {
   try {
-    const { jobId } = req.params;
-    const { completer } = req.body;
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const { completer, signature } = req.body || {};
     if (!completer) return res.status(400).json({ error: "Missing completer address" });
+    if (!ethers.isAddress(completer)) return res.status(400).json({ error: "Invalid completer address" });
+    const normalizedCompleter = ethers.getAddress(completer);
+    if (requireCompleterSignatureForClaim()) {
+      if (!signature) {
+        return res.status(403).json({
+          error: "Completer signature required for claim. Sign the message from the completer wallet and send { signature }.",
+        });
+      }
+      const message = buildClaimMessage(jobId, normalizedCompleter);
+      const result = verifyCompleterSignature(message, signature, normalizedCompleter);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
     const job = await Job.findOneAndUpdate(
-      { jobId: Number(jobId), status: "open" },
-      { completer, status: "claimed" },
+      { jobId, status: "open" },
+      { completer: normalizedCompleter, status: "claimed" },
       { new: true }
     );
     if (!job) return res.status(404).json({ error: "Job not found or not open" });
     const factory = getContractJobFactory();
     if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
-    const tx = await factory.setClaimed(Number(jobId), completer);
+    const tx = await factory.setClaimed(jobId, normalizedCompleter);
     const receipt = await tx.wait();
     const wss = req.app.locals.wss;
-    if (wss) broadcastJobClaimed(wss, Number(jobId), completer);
-    return res.json({ jobId: Number(jobId), completer, txHash: receipt.hash, status: "claimed" });
+    if (wss) broadcastJobClaimed(wss, jobId, normalizedCompleter);
+    return res.json({ jobId, completer: normalizedCompleter, txHash: receipt.hash, status: "claimed" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Claim failed" });
@@ -113,16 +240,175 @@ export async function claimJob(req, res) {
 }
 
 /**
- * GET /jobs/browse?status=open&limit=20
+ * GET /jobs/:jobId — return a single job by ID (from DB). Includes expired: true when status=open and deadline < now.
+ */
+export async function getJobById(req, res) {
+  try {
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const job = await Job.findOne({ jobId }).lean();
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    const expired = job.status === "open" && job.deadline && new Date(job.deadline) < new Date();
+    return res.json({ ...job, expired });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message || "Get job failed" });
+  }
+}
+
+/**
+ * POST /jobs/:jobId/cancel — cancel an open job and refund issuer (backend as JobFactory owner).
+ * If REQUIRE_ISSUER_SIGNATURE_FOR_CANCEL=true, body must include { signature }; signer must equal job.issuer.
+ */
+export async function cancelJob(req, res) {
+  try {
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const job = await Job.findOne({ jobId, status: "open" }).lean();
+    if (!job) return res.status(404).json({ error: "Job not found or not open" });
+    if (requireIssuerSignatureForCancel()) {
+      const { signature } = req.body || {};
+      if (!signature) return res.status(403).json({ error: "Issuer signature required for cancel. Sign the message from the issuer wallet and send { signature }." });
+      const message = buildCancelMessage(jobId);
+      const result = verifyIssuerSignature(message, signature, job.issuer);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
+    const factory = getContractJobFactory();
+    if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+    await (await factory.cancelJobAsOwner(jobId)).wait();
+    const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+    if (chainEscrow) {
+      const deposit = await getEscrowDeposit(jobId, chainEscrow);
+      if (deposit > 0n) await (await factory.refundToIssuer(jobId)).wait();
+    }
+    await Job.updateOne({ jobId }, { status: "cancelled" });
+    const wss = req.app.locals.wss;
+    if (wss) broadcastJobCancelled(wss, jobId, "cancel");
+    return res.json({ jobId, status: "cancelled", refunded: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message || "Cancel failed" });
+  }
+}
+
+/**
+ * POST /jobs/:jobId/expire — expire an open job past deadline: cancel + refund (backend as JobFactory owner).
+ * If REQUIRE_ISSUER_SIGNATURE_FOR_EXPIRE=true, body must include { signature }; signer must equal job.issuer.
+ */
+export async function expireJob(req, res) {
+  try {
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const job = await Job.findOne({ jobId, status: "open" }).lean();
+    if (!job) return res.status(404).json({ error: "Job not found or not open" });
+    const now = new Date();
+    if (new Date(job.deadline) >= now) {
+      return res.status(400).json({ error: "Job deadline has not passed yet" });
+    }
+    if (requireIssuerSignatureForExpire()) {
+      const { signature } = req.body || {};
+      if (!signature) return res.status(403).json({ error: "Issuer signature required for expire. Sign the message from the issuer wallet and send { signature }." });
+      const message = buildExpireMessage(jobId);
+      const result = verifyIssuerSignature(message, signature, job.issuer);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
+    const factory = getContractJobFactory();
+    if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+    await (await factory.cancelJobAsOwner(jobId)).wait();
+    const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+    if (chainEscrow) {
+      const deposit = await getEscrowDeposit(jobId, chainEscrow);
+      if (deposit > 0n) await (await factory.refundToIssuer(jobId)).wait();
+    }
+    await Job.updateOne({ jobId }, { status: "cancelled" });
+    const wssExpire = req.app.locals.wss;
+    if (wssExpire) broadcastJobCancelled(wssExpire, jobId, "expire");
+    return res.json({ jobId, status: "cancelled", expired: true, refunded: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message || "Expire failed" });
+  }
+}
+
+function escapeRegex(s) {
+  if (typeof s !== "string") return "";
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * GET /jobs/browse
+ * Query: status, limit, offset, q (search description), minBounty, maxBounty (wei string), bountyToken, issuer, deadlineBefore (ISO), deadlineAfter (ISO), includeExpired (default true for open jobs).
+ * Returns: { jobs, total, offset, limit, hasMore }. Each job includes expired: true when status=open and deadline < now.
  */
 export async function browseJobs(req, res) {
   try {
-    const { status = "open", limit = 20 } = req.query;
-    const list = await Job.find({ status })
-      .sort({ createdAt: -1 })
-      .limit(Number(limit))
-      .lean();
-    return res.json({ jobs: list });
+    const {
+      status = "open",
+      limit = 20,
+      offset = 0,
+      q,
+      minBounty,
+      maxBounty,
+      bountyToken,
+      issuer,
+      deadlineBefore,
+      deadlineAfter,
+      includeExpired,
+    } = req.query;
+
+    const filter = { status };
+    const qCapped = capSearchQuery(q);
+    if (qCapped) {
+      filter.description = new RegExp(escapeRegex(qCapped), "i");
+    }
+    if (bountyToken && (bountyToken === "MON" || bountyToken === "USDC")) {
+      filter.bountyToken = bountyToken;
+    }
+    const issuerCapped = capSearchQuery(issuer);
+    if (issuerCapped) {
+      filter.issuer = new RegExp(escapeRegex(issuerCapped), "i");
+    }
+    if (deadlineBefore) {
+      filter.deadline = filter.deadline || {};
+      filter.deadline.$lte = new Date(deadlineBefore);
+    }
+    if (deadlineAfter) {
+      filter.deadline = filter.deadline || {};
+      filter.deadline.$gte = new Date(deadlineAfter);
+    }
+    if (status === "open" && includeExpired === "false") {
+      filter.deadline = filter.deadline || {};
+      filter.deadline.$gte = new Date();
+    }
+    if ((minBounty !== undefined && minBounty !== "") || (maxBounty !== undefined && maxBounty !== "")) {
+      const ands = [];
+      if (minBounty !== undefined && minBounty !== "") {
+        ands.push({ $gte: [{ $toLong: "$bounty" }, Number(minBounty)] });
+      }
+      if (maxBounty !== undefined && maxBounty !== "") {
+        ands.push({ $lte: [{ $toLong: "$bounty" }, Number(maxBounty)] });
+      }
+      if (ands.length) filter.$expr = ands.length === 1 ? ands[0] : { $and: ands };
+    }
+
+    const skip = Math.max(0, Number(offset) || 0);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+
+    const [list, total] = await Promise.all([
+      Job.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum + 1).lean(),
+      Job.countDocuments(filter),
+    ]);
+
+    const hasMore = list.length > limitNum;
+    const jobs = (hasMore ? list.slice(0, limitNum) : list).map((j) => ({
+      ...j,
+      expired: j.status === "open" && j.deadline && new Date(j.deadline) < new Date(),
+    }));
+
+    return res.json({ jobs, total, offset: skip, limit: limitNum, hasMore });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Browse failed" });
@@ -131,29 +417,51 @@ export async function browseJobs(req, res) {
 
 /**
  * POST /jobs/:jobId/submit
- * Body: { ipfsHash, completer }
+ * Body: { ipfsHash, completer, signature? }
  * Updates DB and calls JobFactory.setSubmitted(jobId) on-chain so completeAndRelease can run.
+ * If REQUIRE_COMPLETER_SIGNATURE_FOR_SUBMIT=true, body must include { signature }; signer must equal job.completer (only claimed completer can submit).
  */
 export async function submitWork(req, res) {
   try {
-    const { jobId } = req.params;
-    const { ipfsHash, completer } = req.body;
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const { ipfsHash, completer, signature } = req.body || {};
     if (!ipfsHash || !completer) {
       return res.status(400).json({ error: "Missing ipfsHash or completer" });
     }
-    const job = await Job.findOneAndUpdate(
-      { jobId: Number(jobId), status: "claimed" },
-      { ipfsHash, status: "submitted" },
+    const job = await Job.findOne({ jobId, status: "claimed" }).lean();
+    if (!job) return res.status(404).json({ error: "Job not found or not in claimed state" });
+    if ((completer || "").toLowerCase() !== (job.completer || "").toLowerCase()) {
+      return res.status(400).json({ error: "Completer address must match the job's claimed completer" });
+    }
+    const normalizedCompleter = ethers.getAddress(completer);
+    if (requireCompleterSignatureForSubmit()) {
+      if (!signature) {
+        return res.status(403).json({
+          error: "Completer signature required for submit. Sign the message from the completer wallet and send { signature }.",
+        });
+      }
+      const message = buildSubmitMessage(jobId, normalizedCompleter, String(ipfsHash).trim());
+      const result = verifyCompleterSignature(message, signature, normalizedCompleter);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
+    await Job.findOneAndUpdate(
+      { jobId, status: "claimed" },
+      { ipfsHash: String(ipfsHash).trim(), status: "submitted" },
       { new: true }
     );
-    if (!job) return res.status(404).json({ error: "Job not found or not in claimed state" });
     const factory = getContractJobFactory();
     if (factory) {
-      const tx = await factory.setSubmitted(Number(jobId));
+      const tx = await factory.setSubmitted(jobId);
       await tx.wait();
-      return res.json({ jobId: job.jobId, status: "submitted", txHash: tx.hash });
+      const wssSubmit = req.app.locals.wss;
+      if (wssSubmit) broadcastWorkSubmitted(wssSubmit, jobId, normalizedCompleter, ipfsHash);
+      return res.json({ jobId, status: "submitted", txHash: tx.hash });
     }
-    return res.json({ jobId: job.jobId, status: "submitted" });
+    const wssSubmitNoChain = req.app.locals.wss;
+    if (wssSubmitNoChain) broadcastWorkSubmitted(wssSubmitNoChain, jobId, normalizedCompleter, ipfsHash);
+    return res.json({ jobId, status: "submitted" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Submit failed" });
@@ -162,38 +470,74 @@ export async function submitWork(req, res) {
 
 /**
  * POST /jobs/:jobId/verify
- * Body: { approved: boolean } — issuer or 3rd party verifies; on approval, backend calls completeAndRelease (JobFactory → Escrow).
+ * Body: { approved: boolean, split?, reopen?, signature? } — on approval: completeAndRelease. On reject: reopen=true → rejectAndReopen (job open for another agent); reopen=false → setCompleted(false) + refundToIssuer.
+ * If REQUIRE_ISSUER_SIGNATURE_FOR_VERIFY=true, body must include { signature }; signer must equal job.issuer. Message format: ClawGig verify job <jobId> approved <bool> reopen <bool>.
  */
 export async function verify(req, res) {
   try {
-    const { jobId } = req.params;
-    const { approved, split } = req.body;
-    const job = await Job.findOne({ jobId: Number(jobId), status: "submitted" }).lean();
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const { approved, split, reopen, signature } = req.body || {};
+    const job = await Job.findOne({ jobId, status: "submitted" }).lean();
     if (!job) return res.status(404).json({ error: "Job not found or not submitted" });
-    const newStatus = approved ? "completed" : "cancelled";
-    await Job.updateOne({ jobId: Number(jobId) }, { status: newStatus });
-    if (approved) {
+    if (requireIssuerSignatureForVerify()) {
+      if (!signature) return res.status(403).json({ error: "Issuer signature required for verify. Sign the message from the issuer wallet and send { signature }." });
+      const message = buildVerifyMessage(jobId, !!approved, !!reopen);
+      const result = verifyIssuerSignature(message, signature, job.issuer);
+      if (!result.ok) return res.status(403).json({ error: result.error });
+    }
+
+    if (!approved) {
+      const factory = getContractJobFactory();
+      if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+      if (reopen) {
+        await (await factory.rejectAndReopen(jobId)).wait();
+        await Job.updateOne(
+          { jobId },
+          { status: "open", completer: null, ipfsHash: null }
+        );
+        const wssReopen = req.app.locals.wss;
+        if (wssReopen) broadcastJobReopened(wssReopen, jobId);
+        return res.json({ jobId, status: "open", reopened: true });
+      }
+      await (await factory.setCompleted(jobId, false)).wait();
+      const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+      if (chainEscrow) {
+        const deposit = await getEscrowDeposit(jobId, chainEscrow);
+        if (deposit > 0n) await (await factory.refundToIssuer(jobId)).wait();
+      }
+      await Job.updateOne({ jobId }, { status: "cancelled" });
+      const wssReject = req.app.locals.wss;
+      if (wssReject) broadcastJobCancelled(wssReject, jobId, "reject_refund");
+      return res.json({ jobId, status: "cancelled", refunded: true });
+    }
+
+    const newStatus = "completed";
+    await Job.updateOne({ jobId }, { status: newStatus });
+    {
       const factory = getContractJobFactory();
       if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
       if (!job.completer) return res.status(400).json({ error: "Job has no completer" });
-      const chainEscrow = await factory.escrow();
+      const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+      if (!chainEscrow) return res.status(503).json({ error: "Escrow not configured for this job token" });
       const escrowLinkedFactory = await getEscrowJobFactory(chainEscrow);
       const ourFactoryAddress = (process.env.JOB_FACTORY_ADDRESS || "").toLowerCase();
       if (escrowLinkedFactory && escrowLinkedFactory.toLowerCase() !== ourFactoryAddress) {
         return res.status(400).json({
           error: "Escrow.jobFactory() does not match JOB_FACTORY_ADDRESS — release() would revert with Unauthorized.",
-          jobId: Number(jobId),
+          jobId,
           chainEscrow,
           escrowJobFactory: escrowLinkedFactory,
           envJobFactory: process.env.JOB_FACTORY_ADDRESS,
           fix: "Redeploy contracts (same deploy script) and set JOB_FACTORY_ADDRESS + ESCROW_ADDRESS from that deploy.",
         });
       }
-      const depositAmount = await getEscrowDeposit(Number(jobId), chainEscrow);
+      const depositAmount = await getEscrowDeposit(jobId, chainEscrow);
       if (!depositAmount || depositAmount === 0n) {
         return res.status(400).json({
           error: "No bounty escrowed for this job on-chain. Call POST /jobs/:jobId/escrow first (backend wallet must hold the bounty).",
-          jobId: Number(jobId),
+          jobId,
           chainEscrow,
         });
       }
@@ -230,7 +574,7 @@ export async function verify(req, res) {
           }
         }
         const tx = await factory.completeAndReleaseSplit(
-          Number(jobId),
+          jobId,
           recipients,
           amounts.map((a) => a.toString()),
           { gasLimit: 200000 }
@@ -244,10 +588,12 @@ export async function verify(req, res) {
             console.error("Reputation.recordCompletion failed:", e.message);
           }
         }
-        return res.json({ jobId: Number(jobId), status: newStatus, txHash: receipt.hash, split: true });
+        const wssSplit = req.app.locals.wss;
+        if (wssSplit) broadcastJobCompleted(wssSplit, jobId);
+        return res.json({ jobId, status: newStatus, txHash: receipt.hash, split: true });
       }
 
-      const tx = await factory.completeAndRelease(Number(jobId), job.completer, { gasLimit: 150000 });
+      const tx = await factory.completeAndRelease(jobId, job.completer, { gasLimit: 150000 });
       const receipt = await tx.wait();
       const reputation = getContractReputation();
       if (reputation) {
@@ -257,9 +603,10 @@ export async function verify(req, res) {
           console.error("Reputation.recordCompletion failed:", e.message);
         }
       }
-      return res.json({ jobId: Number(jobId), status: newStatus, txHash: receipt.hash });
+      const wssComplete = req.app.locals.wss;
+      if (wssComplete) broadcastJobCompleted(wssComplete, jobId);
+      return res.json({ jobId, status: newStatus, txHash: receipt.hash });
     }
-    return res.json({ jobId: Number(jobId), status: newStatus });
   } catch (err) {
     console.error(err);
     const isNoDeposit = err.data === "0xd76ebd0f" || (err.info && err.info.error && err.info.error.data === "0xd76ebd0f");

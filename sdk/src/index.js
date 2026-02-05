@@ -8,6 +8,28 @@ import { ClawGigWallet, createMemoryWallet } from "./wallet.js";
 
 const defaultBaseUrl = "http://localhost:3001";
 
+/** Message format must match backend (issuerAuth.js). */
+function buildPostMessage(issuer) {
+  return `ClawGig post job as ${issuer}`;
+}
+function buildEscrowMessage(jobId) {
+  return `ClawGig escrow job ${jobId}`;
+}
+function buildClaimMessage(jobId, completer) {
+  return `ClawGig claim job ${jobId} as ${completer}`;
+}
+function buildSubmitMessage(jobId, completer, ipfsHash) {
+  return `ClawGig submit job ${jobId} as ${completer} ipfs ${ipfsHash}`;
+}
+
+/** Sign message with wallet (ClawGigWallet or ethers.Wallet). Returns signature hex or null. */
+async function signMessage(wallet, message) {
+  if (!wallet || !message) return null;
+  const signer = typeof wallet.getWallet === "function" ? wallet.getWallet() : wallet;
+  if (typeof signer?.signMessage !== "function") return null;
+  return signer.signMessage(message);
+}
+
 /** Default keywords that suggest a task should be outsourced to the marketplace (agent-unfamiliar). */
 const DEFAULT_OUTSOURCE_KEYWORDS = [
   "scrape", "crawl", "full website", "entire site", "bulk scrape",
@@ -37,32 +59,41 @@ async function request(baseUrl, method, path, body = null) {
  * @param {string|number} opts.bounty - Bounty wei
  * @param {string|number|Date} opts.deadline - ISO or unix
  * @param {string} [opts.issuer] - Issuer address
+ * @param {string} [opts.bountyToken] - "MON" (default) or "USDC"; USDC only on Monad mainnet
  */
-export async function postJob({ baseUrl = defaultBaseUrl, task, description, bounty, deadline, issuer, wallet }) {
+export async function postJob({ baseUrl = defaultBaseUrl, task, description, bounty, deadline, issuer, wallet, bountyToken }) {
   const text = task ?? description;
   if (!text) throw new Error("task or description required");
   const issuerAddr = wallet ? (typeof wallet.getAddress === "function" ? wallet.getAddress() : wallet.address) : issuer;
+  const issuerFinal = issuerAddr ?? "0x0000000000000000000000000000000000000000";
   const d = typeof deadline === "number" ? new Date(deadline * 1000).toISOString() : deadline;
-  return request(baseUrl, "POST", "/jobs/post", {
+  const body = {
     description: text,
     bounty: String(bounty),
     deadline: d,
-    issuer: issuerAddr ?? "0x0000000000000000000000000000000000000000",
-  });
+    issuer: issuerFinal,
+  };
+  if (bountyToken) body.bountyToken = bountyToken;
+  if (wallet) {
+    const signature = await signMessage(wallet, buildPostMessage(issuerFinal));
+    if (signature) body.signature = signature;
+  }
+  return request(baseUrl, "POST", "/jobs/post", body);
 }
 
 /**
  * High-level: post a job from a task string with sensible defaults for agents.
  * @param {string} task - Task description (e.g. "Scrape website data")
- * @param {Object} [opts] - baseUrl, bounty (default 0.001 MONAD in wei), deadline (default 7d), issuer
+ * @param {Object} [opts] - baseUrl, bounty (default 0.001 MON in wei), deadline (default 7d), issuer, bountyToken ("MON" | "USDC")
  */
 export async function postJobFromTask(task, opts = {}) {
   const baseUrl = opts.baseUrl ?? defaultBaseUrl;
-  const bounty = opts.bounty ?? "1000000000000000"; // 0.001 MONAD
+  const bounty = opts.bounty ?? "1000000000000000"; // 0.001 MON (18 decimals)
   const deadline = opts.deadline ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const issuer = opts.issuer ?? null;
   const wallet = opts.wallet ?? null;
-  return postJob({ baseUrl, task, bounty, deadline, issuer, wallet });
+  const bountyToken = opts.bountyToken ?? "MON";
+  return postJob({ baseUrl, task, bounty, deadline, issuer, wallet, bountyToken });
 }
 
 /**
@@ -104,33 +135,59 @@ export async function browseJobs({ baseUrl = defaultBaseUrl, status = "open", li
   return request(baseUrl, "GET", `/jobs/browse?${params}`);
 }
 
-export async function escrowJob({ baseUrl = defaultBaseUrl, jobId, bountyWei } = {}) {
-  return request(baseUrl, "POST", `/jobs/${jobId}/escrow`, bountyWei != null ? { bountyWei: String(bountyWei) } : {});
+export async function getJob({ baseUrl = defaultBaseUrl, jobId } = {}) {
+  return request(baseUrl, "GET", `/jobs/${jobId}`);
+}
+
+export async function cancelJob({ baseUrl = defaultBaseUrl, jobId } = {}) {
+  return request(baseUrl, "POST", `/jobs/${jobId}/cancel`, {});
+}
+
+export async function escrowJob({ baseUrl = defaultBaseUrl, jobId, bountyWei, wallet } = {}) {
+  const body = {};
+  if (bountyWei != null) body.bountyWei = String(bountyWei);
+  if (wallet) {
+    const signature = await signMessage(wallet, buildEscrowMessage(jobId));
+    if (signature) body.signature = signature;
+  }
+  return request(baseUrl, "POST", `/jobs/${jobId}/escrow`, Object.keys(body).length ? body : {});
 }
 
 export async function claimJob({ baseUrl = defaultBaseUrl, jobId, completer, wallet }) {
   const completerAddr = wallet ? (typeof wallet.getAddress === "function" ? wallet.getAddress() : wallet.address) : completer;
   if (!completerAddr) throw new Error("completer or wallet required");
-  return request(baseUrl, "POST", `/jobs/${jobId}/claim`, { completer: completerAddr });
+  const body = { completer: completerAddr };
+  if (wallet) {
+    const signature = await signMessage(wallet, buildClaimMessage(jobId, completerAddr));
+    if (signature) body.signature = signature;
+  }
+  return request(baseUrl, "POST", `/jobs/${jobId}/claim`, body);
 }
 
 export async function submitWork({ baseUrl = defaultBaseUrl, jobId, ipfsHash, completer, wallet }) {
   const completerAddr = wallet ? (typeof wallet.getAddress === "function" ? wallet.getAddress() : wallet.address) : completer;
   if (!completerAddr) throw new Error("completer or wallet required");
-  return request(baseUrl, "POST", `/jobs/${jobId}/submit`, { ipfsHash, completer: completerAddr });
+  const body = { ipfsHash, completer: completerAddr };
+  if (wallet) {
+    const signature = await signMessage(wallet, buildSubmitMessage(jobId, completerAddr, ipfsHash ?? ""));
+    if (signature) body.signature = signature;
+  }
+  return request(baseUrl, "POST", `/jobs/${jobId}/submit`, body);
 }
 
 /**
- * Verify completion. Optional split for multi-agent teams (bounty split to multiple addresses).
+ * Verify completion. Optional split for multi-agent teams. On reject: reopen=true reopens job for another agent; reopen=false refunds issuer.
  * @param {Object} opts
  * @param {string} [opts.baseUrl]
  * @param {number} opts.jobId
  * @param {boolean} opts.approved
  * @param {Array<{ address: string, percent?: number, shareWei?: string }>} [opts.split] - Team split (percent 0-100 or shareWei). Sum of percent must be 100 if used.
+ * @param {boolean} [opts.reopen] - When approved=false: true = reopen job for another agent; false = cancel and refund issuer (default).
  */
-export async function verify({ baseUrl = defaultBaseUrl, jobId, approved, split }) {
+export async function verify({ baseUrl = defaultBaseUrl, jobId, approved, split, reopen }) {
   const body = { approved };
   if (split && Array.isArray(split) && split.length > 0) body.split = split;
+  if (reopen != null) body.reopen = reopen;
   return request(baseUrl, "POST", `/jobs/${jobId}/verify`, body);
 }
 
@@ -158,6 +215,8 @@ const api = {
   isUnfamiliarTask,
   autoOutsource,
   browseJobs,
+  getJob,
+  cancelJob,
   escrowJob,
   claimJob,
   submitWork,

@@ -1,10 +1,13 @@
 import { Router } from "express";
-import { postJob, escrowJob, claimJob, browseJobs, submitWork, verify } from "../handlers/jobs.js";
+import { postJob, escrowJob, claimJob, browseJobs, getJobById, cancelJob, expireJob, submitWork, verify } from "../handlers/jobs.js";
 
 export const jobsRouter = Router();
 
 jobsRouter.post("/post", postJob);
 jobsRouter.get("/browse", browseJobs);
+jobsRouter.get("/:jobId", getJobById);
+jobsRouter.post("/:jobId/cancel", cancelJob);
+jobsRouter.post("/:jobId/expire", expireJob);
 jobsRouter.post("/:jobId/escrow", escrowJob);
 jobsRouter.post("/:jobId/claim", claimJob);
 jobsRouter.post("/:jobId/submit", submitWork);

@@ -3,18 +3,23 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
- * @title Escrow
- * @notice Holds and releases MON (native) bounties for ClawGig jobs. Used on testnet and mainnet.
- *         For USDC bounties on mainnet, use EscrowUSDC.
+ * @title EscrowUSDC
+ * @notice Holds and releases USDC bounties for ClawGig jobs on Monad mainnet.
+ *         Issuer (or backend) transfers USDC to this contract; release sends to completer(s).
  */
-contract Escrow is Ownable, ReentrancyGuard {
-    address public jobFactory;
+contract EscrowUSDC is Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
 
-    /// @dev jobId => amount wei held
+    address public jobFactory;
+    IERC20 public immutable usdc;
+
+    /// @dev jobId => amount (USDC 6 decimals)
     mapping(uint256 => uint256) public deposits;
-    /// @dev jobId => issuer (to allow refunds)
+    /// @dev jobId => issuer (for refunds)
     mapping(uint256 => address) public issuerOf;
 
     event Deposited(uint256 indexed jobId, address indexed issuer, uint256 amount);
@@ -24,40 +29,42 @@ contract Escrow is Ownable, ReentrancyGuard {
 
     error Unauthorized();
     error NoDeposit();
-    error TransferFailed();
     error InvalidAmount();
 
-    constructor() Ownable(msg.sender) {}
+    constructor(address _usdc) Ownable(msg.sender) {
+        if (_usdc == address(0)) revert InvalidAmount();
+        usdc = IERC20(_usdc);
+    }
 
     function setJobFactory(address newFactory) external onlyOwner {
         jobFactory = newFactory;
     }
 
     /**
-     * @notice Escrow bounty for a job (must be called after JobFactory.postJob).
+     * @notice Escrow USDC bounty for a job. Caller must have approved this contract to spend amount.
      */
-    function deposit(uint256 jobId) external payable nonReentrant {
-        if (msg.value == 0) revert InvalidAmount();
-        deposits[jobId] += msg.value;
+    function deposit(uint256 jobId, uint256 amount) external nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        deposits[jobId] += amount;
         if (issuerOf[jobId] == address(0)) issuerOf[jobId] = msg.sender;
-        emit Deposited(jobId, msg.sender, msg.value);
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        emit Deposited(jobId, msg.sender, amount);
     }
 
     /**
-     * @notice Release bounty to completer (callable by JobFactory only after setCompleted(jobId, true)).
+     * @notice Release USDC bounty to completer (callable by JobFactory only after setCompleted(jobId, true)).
      */
     function release(uint256 jobId, address payable completer) external nonReentrant {
         if (msg.sender != jobFactory) revert Unauthorized();
         uint256 amount = deposits[jobId];
         if (amount == 0) revert NoDeposit();
         deposits[jobId] = 0;
-        (bool ok,) = completer.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        usdc.safeTransfer(completer, amount);
         emit Released(jobId, completer, amount);
     }
 
     /**
-     * @notice Release bounty to multiple recipients (teams). Callable by JobFactory only. Sum of amounts must equal deposits[jobId].
+     * @notice Release USDC bounty to multiple recipients (teams). Sum of amounts must equal deposits[jobId].
      */
     function releaseSplit(uint256 jobId, address payable[] calldata recipients, uint256[] calldata amounts) external nonReentrant {
         if (msg.sender != jobFactory) revert Unauthorized();
@@ -73,17 +80,14 @@ contract Escrow is Ownable, ReentrancyGuard {
         deposits[jobId] = 0;
         for (uint256 i; i < recipients.length; ) {
             uint256 amt = amounts[i];
-            if (amt > 0) {
-                (bool ok,) = recipients[i].call{value: amt}("");
-                if (!ok) revert TransferFailed();
-            }
+            if (amt > 0) usdc.safeTransfer(recipients[i], amt);
             unchecked { ++i; }
         }
         emit ReleasedSplit(jobId, recipients.length);
     }
 
     /**
-     * @notice Refund issuer when job is cancelled or rejected (JobFactory or issuer when cancelled).
+     * @notice Refund issuer when job is cancelled or rejected.
      */
     function refund(uint256 jobId) external nonReentrant {
         uint256 amount = deposits[jobId];
@@ -91,9 +95,7 @@ contract Escrow is Ownable, ReentrancyGuard {
         bool allowed = msg.sender == jobFactory || msg.sender == issuerOf[jobId];
         if (!allowed) revert Unauthorized();
         deposits[jobId] = 0;
-        address payable to = payable(issuerOf[jobId]);
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
-        emit Refunded(jobId, to, amount);
+        usdc.safeTransfer(issuerOf[jobId], amount);
+        emit Refunded(jobId, issuerOf[jobId], amount);
     }
 }

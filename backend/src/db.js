@@ -19,6 +19,7 @@ export const JobSchema = new mongoose.Schema(
     descriptionHash: { type: String, required: true },
     description: { type: String },
     bounty: { type: String, required: true },
+    bountyToken: { type: String, enum: ["MON", "USDC"], default: "MON" },
     deadline: { type: Date, required: true },
     completer: { type: String },
     ipfsHash: { type: String },
@@ -32,6 +33,9 @@ export const JobSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+JobSchema.index({ status: 1, createdAt: -1 });
+JobSchema.index({ deadline: 1 });
 
 export const Job = mongoose.model("Job", JobSchema);
 

@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { Agent } from "../db.js";
+import { validateAgentName } from "../validation.js";
 
 /**
  * POST /agents/signup
@@ -15,6 +16,8 @@ export async function signup(req, res) {
     if (!ethers.isAddress(address)) {
       return res.status(400).json({ error: "Invalid Ethereum/Monad address" });
     }
+    const nameErr = validateAgentName(agentName);
+    if (nameErr) return res.status(400).json({ error: nameErr });
     const normalized = ethers.getAddress(address);
     const existing = await Agent.findOne({ address: normalized }).lean();
     if (existing) {

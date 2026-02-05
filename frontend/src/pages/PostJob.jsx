@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { postJob } from '../api/client';
+import { signIssuerAction } from '../api/issuerSign';
 
 export function PostJob() {
   const navigate = useNavigate();
@@ -13,17 +14,55 @@ export function PostJob() {
   };
   const [deadline, setDeadline] = useState(defaultDeadlineStr());
   const [issuer, setIssuer] = useState('');
+  const [bountyToken, setBountyToken] = useState('MON');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const connectWallet = async () => {
+    setError(null);
+    const ethereum = typeof window !== 'undefined' && window.ethereum;
+    if (!ethereum) {
+      setError('No wallet found. Install MetaMask or another Web3 wallet.');
+      return;
+    }
+    try {
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const account = accounts?.[0];
+      if (account) setIssuer(account);
+    } catch (e) {
+      setError(e.message || 'Failed to connect wallet');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const bountyWei = String(BigInt(Math.round(parseFloat(bounty) * 1e18)));
+      const issuerAddress = issuer.trim();
+      if (!issuerAddress) {
+        setError('Connect your wallet or enter issuer address. Issuer signature is required to post.');
+        setLoading(false);
+        return;
+      }
+      const signature = await signIssuerAction('post', null, { issuer: issuerAddress });
+      if (!signature) {
+        setError('Wallet signature required to post. Please sign the message in your wallet.');
+        setLoading(false);
+        return;
+      }
+      const isUSDC = bountyToken === 'USDC';
+      const decimals = isUSDC ? 6 : 18;
+      const bountyWei = String(BigInt(Math.round(parseFloat(bounty) * Math.pow(10, decimals))));
       const d = deadline ? new Date(deadline).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { jobId } = await postJob({ description, bounty: bountyWei, deadline: d, issuer: issuer.trim() || '0x0000000000000000000000000000000000000000' });
+      const { jobId } = await postJob({
+        description,
+        bounty: bountyWei,
+        deadline: d,
+        issuer: issuerAddress,
+        bountyToken,
+        signature,
+      });
       navigate(`/jobs/${jobId}`);
     } catch (e) {
       setError(e.message);
@@ -56,15 +95,29 @@ export function PostJob() {
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">Bounty (MONAD)</label>
-            <input
-              type="text"
-              value={bounty}
-              onChange={(e) => setBounty(e.target.value)}
-              required
-              className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
-              placeholder="0.001"
-            />
+            <label className="block text-sm font-medium text-zinc-300 mb-2">Bounty</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={bounty}
+                onChange={(e) => setBounty(e.target.value)}
+                required
+                className="flex-1 px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
+                placeholder={bountyToken === 'USDC' ? '10' : '0.001'}
+              />
+              <select
+                value={bountyToken}
+                onChange={(e) => setBountyToken(e.target.value)}
+                className="px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
+                title={bountyToken === 'USDC' ? 'USDC bounties only on Monad mainnet' : 'MON on testnet and mainnet'}
+              >
+                <option value="MON">MON</option>
+                <option value="USDC">USDC</option>
+              </select>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">
+              {bountyToken === 'USDC' ? 'USDC on Monad mainnet only (6 decimals)' : 'MON native (18 decimals)'}
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">Deadline</label>
@@ -77,14 +130,24 @@ export function PostJob() {
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-2">Issuer address (optional)</label>
-          <input
-            type="text"
-            value={issuer}
-            onChange={(e) => setIssuer(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm transition"
-            placeholder="0x..."
-          />
+          <label className="block text-sm font-medium text-zinc-300 mb-2">Issuer address (your wallet — required to sign)</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={issuer}
+              onChange={(e) => setIssuer(e.target.value)}
+              className="flex-1 px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm transition"
+              placeholder="0x... or connect wallet"
+            />
+            <button
+              type="button"
+              onClick={connectWallet}
+              className="px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-zinc-300 hover:text-white hover:border-[var(--accent)] transition"
+            >
+              Connect wallet
+            </button>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-1.5">You will sign a message when posting to prove you control this address.</p>
         </div>
         <div className="flex gap-4">
           <button
