@@ -45,8 +45,22 @@ import {
   validateDeadline,
   capSearchQuery,
 } from "../validation.js";
+import { logValidation, logSignatureFailure, logClientError, logError } from "../logger.js";
 
 const TOKEN_MON = 0;
+const HANDLER = Object.freeze({
+  postJob: "postJob",
+  escrowJob: "escrowJob",
+  claimJob: "claimJob",
+  getJobById: "getJobById",
+  cancelJob: "cancelJob",
+  expireJob: "expireJob",
+  browseJobs: "browseJobs",
+  getStats: "getStats",
+  submitWork: "submitWork",
+  verify: "verify",
+  getReputation: "getReputation",
+});
 const TOKEN_USDC = 1;
 
 /**
@@ -58,27 +72,42 @@ export async function postJob(req, res) {
   try {
     const { description, bounty, deadline, issuer, bountyToken: rawToken, signature } = req.body || {};
     if (!description || !bounty || !deadline || !issuer) {
+      logValidation(HANDLER.postJob, "Missing description, bounty, deadline, or issuer", { issuer });
       return res.status(400).json({ error: "Missing description, bounty, deadline, or issuer" });
     }
     if (!ethers.isAddress(issuer)) {
+      logValidation(HANDLER.postJob, "Invalid issuer address", { issuer });
       return res.status(400).json({ error: "Invalid issuer address" });
     }
     const descErr = validateDescription(description);
-    if (descErr) return res.status(400).json({ error: descErr });
+    if (descErr) {
+      logValidation(HANDLER.postJob, descErr, { issuer });
+      return res.status(400).json({ error: descErr });
+    }
     const bountyErr = validateBounty(bounty);
-    if (bountyErr) return res.status(400).json({ error: bountyErr });
+    if (bountyErr) {
+      logValidation(HANDLER.postJob, bountyErr, { issuer });
+      return res.status(400).json({ error: bountyErr });
+    }
     const deadlineErr = validateDeadline(deadline);
-    if (deadlineErr) return res.status(400).json({ error: deadlineErr });
+    if (deadlineErr) {
+      logValidation(HANDLER.postJob, deadlineErr, { issuer });
+      return res.status(400).json({ error: deadlineErr });
+    }
     const normalizedIssuer = ethers.getAddress(issuer);
     if (requireIssuerSignatureForPost()) {
       if (!signature) {
+        logSignatureFailure(HANDLER.postJob, "Issuer signature required for post (missing signature)", { issuer: normalizedIssuer });
         return res.status(403).json({
           error: "Issuer signature required for post. Sign the message from the issuer wallet and send { signature }.",
         });
       }
       const message = buildPostMessage(normalizedIssuer);
       const result = verifyIssuerSignature(message, signature, normalizedIssuer);
-      if (!result.ok) return res.status(403).json({ error: result.error });
+      if (!result.ok) {
+        logSignatureFailure(HANDLER.postJob, result.error, { issuer: normalizedIssuer });
+        return res.status(403).json({ error: result.error });
+      }
     }
     const bountyToken = (rawToken || "MON").toUpperCase() === "USDC" ? "USDC" : "MON";
     if (bountyToken === "USDC" && !isMainnet()) {
@@ -122,7 +151,7 @@ export async function postJob(req, res) {
     );
     return res.json({ jobId, txHash: receipt.hash, bountyToken });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.postJob, err, { issuer: req.body?.issuer });
     return res.status(500).json({ error: err.message || "Post job failed" });
   }
 }
@@ -135,20 +164,30 @@ export async function postJob(req, res) {
 export async function escrowJob(req, res) {
   try {
     const parsed = parseJobId(req);
-    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    if (!parsed.ok) {
+      logValidation(HANDLER.escrowJob, parsed.error, { jobId: req.params?.jobId });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
     const { jobId } = parsed;
     const { bountyWei, signature } = req.body || {};
     const job = await Job.findOne({ jobId, status: "open" }).lean();
-    if (!job) return res.status(404).json({ error: "Job not found or not open" });
+    if (!job) {
+      logClientError(HANDLER.escrowJob, 404, "Job not found or not open", { jobId });
+      return res.status(404).json({ error: "Job not found or not open" });
+    }
     if (requireIssuerSignatureForEscrow()) {
       if (!signature) {
+        logSignatureFailure(HANDLER.escrowJob, "Issuer signature required for escrow (missing signature)", { jobId, issuer: job.issuer });
         return res.status(403).json({
           error: "Issuer signature required for escrow. Sign the message from the issuer wallet and send { signature }.",
         });
       }
       const message = buildEscrowMessage(jobId);
       const result = verifyIssuerSignature(message, signature, job.issuer);
-      if (!result.ok) return res.status(403).json({ error: result.error });
+      if (!result.ok) {
+        logSignatureFailure(HANDLER.escrowJob, result.error, { jobId, issuer: job.issuer });
+        return res.status(403).json({ error: result.error });
+      }
     }
     const amount = bountyWei ? BigInt(bountyWei) : BigInt(job.bounty);
     if (amount <= 0n) return res.status(400).json({ error: "Invalid bounty amount" });
@@ -184,7 +223,7 @@ export async function escrowJob(req, res) {
       checkOnExplorer: `Verify Escrow ${escrowAddress} has deposits(${jobId}) > 0 and JobFactory.escrow() === ${escrowAddress}`,
     });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.escrowJob, err, { jobId: req.params?.jobId });
     const msg = err.message || "Escrow failed";
     const isRevert = msg.includes("revert") || msg.includes("reverted");
     const hint = isRevert
@@ -204,28 +243,44 @@ export async function escrowJob(req, res) {
 export async function claimJob(req, res) {
   try {
     const parsed = parseJobId(req);
-    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    if (!parsed.ok) {
+      logValidation(HANDLER.claimJob, parsed.error, { jobId: req.params?.jobId });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
     const { jobId } = parsed;
     const { completer, signature } = req.body || {};
-    if (!completer) return res.status(400).json({ error: "Missing completer address" });
-    if (!ethers.isAddress(completer)) return res.status(400).json({ error: "Invalid completer address" });
+    if (!completer) {
+      logValidation(HANDLER.claimJob, "Missing completer address", { jobId });
+      return res.status(400).json({ error: "Missing completer address" });
+    }
+    if (!ethers.isAddress(completer)) {
+      logValidation(HANDLER.claimJob, "Invalid completer address", { jobId, completer });
+      return res.status(400).json({ error: "Invalid completer address" });
+    }
     const normalizedCompleter = ethers.getAddress(completer);
     if (requireCompleterSignatureForClaim()) {
       if (!signature) {
+        logSignatureFailure(HANDLER.claimJob, "Completer signature required for claim (missing signature)", { jobId, completer: normalizedCompleter });
         return res.status(403).json({
           error: "Completer signature required for claim. Sign the message from the completer wallet and send { signature }.",
         });
       }
       const message = buildClaimMessage(jobId, normalizedCompleter);
       const result = verifyCompleterSignature(message, signature, normalizedCompleter);
-      if (!result.ok) return res.status(403).json({ error: result.error });
+      if (!result.ok) {
+        logSignatureFailure(HANDLER.claimJob, result.error, { jobId, completer: normalizedCompleter });
+        return res.status(403).json({ error: result.error });
+      }
     }
     const job = await Job.findOneAndUpdate(
       { jobId, status: "open" },
       { completer: normalizedCompleter, status: "claimed" },
       { new: true }
     );
-    if (!job) return res.status(404).json({ error: "Job not found or not open" });
+    if (!job) {
+      logClientError(HANDLER.claimJob, 404, "Job not found or not open", { jobId });
+      return res.status(404).json({ error: "Job not found or not open" });
+    }
     const factory = getContractJobFactory();
     if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
     const tx = await factory.setClaimed(jobId, normalizedCompleter);
@@ -234,7 +289,7 @@ export async function claimJob(req, res) {
     if (wss) broadcastJobClaimed(wss, jobId, normalizedCompleter);
     return res.json({ jobId, completer: normalizedCompleter, txHash: receipt.hash, status: "claimed" });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.claimJob, err, { jobId: req.params?.jobId, completer: req.body?.completer });
     return res.status(500).json({ error: err.message || "Claim failed" });
   }
 }
@@ -245,14 +300,20 @@ export async function claimJob(req, res) {
 export async function getJobById(req, res) {
   try {
     const parsed = parseJobId(req);
-    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    if (!parsed.ok) {
+      logValidation(HANDLER.getJobById, parsed.error, { jobId: req.params?.jobId });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
     const { jobId } = parsed;
     const job = await Job.findOne({ jobId }).lean();
-    if (!job) return res.status(404).json({ error: "Job not found" });
+    if (!job) {
+      logClientError(HANDLER.getJobById, 404, "Job not found", { jobId });
+      return res.status(404).json({ error: "Job not found" });
+    }
     const expired = job.status === "open" && job.deadline && new Date(job.deadline) < new Date();
     return res.json({ ...job, expired });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.getJobById, err, { jobId: req.params?.jobId });
     return res.status(500).json({ error: err.message || "Get job failed" });
   }
 }
@@ -264,16 +325,28 @@ export async function getJobById(req, res) {
 export async function cancelJob(req, res) {
   try {
     const parsed = parseJobId(req);
-    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    if (!parsed.ok) {
+      logValidation(HANDLER.cancelJob, parsed.error, { jobId: req.params?.jobId });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
     const { jobId } = parsed;
     const job = await Job.findOne({ jobId, status: "open" }).lean();
-    if (!job) return res.status(404).json({ error: "Job not found or not open" });
+    if (!job) {
+      logClientError(HANDLER.cancelJob, 404, "Job not found or not open", { jobId });
+      return res.status(404).json({ error: "Job not found or not open" });
+    }
     if (requireIssuerSignatureForCancel()) {
       const { signature } = req.body || {};
-      if (!signature) return res.status(403).json({ error: "Issuer signature required for cancel. Sign the message from the issuer wallet and send { signature }." });
+      if (!signature) {
+        logSignatureFailure(HANDLER.cancelJob, "Issuer signature required for cancel (missing signature)", { jobId, issuer: job.issuer });
+        return res.status(403).json({ error: "Issuer signature required for cancel. Sign the message from the issuer wallet and send { signature }." });
+      }
       const message = buildCancelMessage(jobId);
       const result = verifyIssuerSignature(message, signature, job.issuer);
-      if (!result.ok) return res.status(403).json({ error: result.error });
+      if (!result.ok) {
+        logSignatureFailure(HANDLER.cancelJob, result.error, { jobId, issuer: job.issuer });
+        return res.status(403).json({ error: result.error });
+      }
     }
     const factory = getContractJobFactory();
     if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
@@ -288,7 +361,7 @@ export async function cancelJob(req, res) {
     if (wss) broadcastJobCancelled(wss, jobId, "cancel");
     return res.json({ jobId, status: "cancelled", refunded: true });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.cancelJob, err, { jobId: req.params?.jobId });
     return res.status(500).json({ error: err.message || "Cancel failed" });
   }
 }
@@ -328,7 +401,7 @@ export async function expireJob(req, res) {
     if (wssExpire) broadcastJobCancelled(wssExpire, jobId, "expire");
     return res.json({ jobId, status: "cancelled", expired: true, refunded: true });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.expireJob, err, { jobId: req.params?.jobId });
     return res.status(500).json({ error: err.message || "Expire failed" });
   }
 }
@@ -410,8 +483,25 @@ export async function browseJobs(req, res) {
 
     return res.json({ jobs, total, offset: skip, limit: limitNum, hasMore });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.browseJobs, err);
     return res.status(500).json({ error: err.message || "Browse failed" });
+  }
+}
+
+/**
+ * GET /jobs/stats
+ * Returns: { openJobs, completedJobs } — counts for landing page.
+ */
+export async function getStats(req, res) {
+  try {
+    const [openJobs, completedJobs] = await Promise.all([
+      Job.countDocuments({ status: "open" }),
+      Job.countDocuments({ status: "completed" }),
+    ]);
+    return res.json({ openJobs, completedJobs });
+  } catch (err) {
+    logError(HANDLER.getStats, err);
+    return res.status(500).json({ error: err.message || "Stats failed" });
   }
 }
 
@@ -463,7 +553,7 @@ export async function submitWork(req, res) {
     if (wssSubmitNoChain) broadcastWorkSubmitted(wssSubmitNoChain, jobId, normalizedCompleter, ipfsHash);
     return res.json({ jobId, status: "submitted" });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.submitWork, err, { jobId: req.params?.jobId, completer: req.body?.completer });
     return res.status(500).json({ error: err.message || "Submit failed" });
   }
 }
@@ -476,16 +566,28 @@ export async function submitWork(req, res) {
 export async function verify(req, res) {
   try {
     const parsed = parseJobId(req);
-    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    if (!parsed.ok) {
+      logValidation(HANDLER.verify, parsed.error, { jobId: req.params?.jobId });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
     const { jobId } = parsed;
     const { approved, split, reopen, signature } = req.body || {};
     const job = await Job.findOne({ jobId, status: "submitted" }).lean();
-    if (!job) return res.status(404).json({ error: "Job not found or not submitted" });
+    if (!job) {
+      logClientError(HANDLER.verify, 404, "Job not found or not submitted", { jobId });
+      return res.status(404).json({ error: "Job not found or not submitted" });
+    }
     if (requireIssuerSignatureForVerify()) {
-      if (!signature) return res.status(403).json({ error: "Issuer signature required for verify. Sign the message from the issuer wallet and send { signature }." });
+      if (!signature) {
+        logSignatureFailure(HANDLER.verify, "Issuer signature required for verify (missing signature)", { jobId, issuer: job.issuer });
+        return res.status(403).json({ error: "Issuer signature required for verify. Sign the message from the issuer wallet and send { signature }." });
+      }
       const message = buildVerifyMessage(jobId, !!approved, !!reopen);
       const result = verifyIssuerSignature(message, signature, job.issuer);
-      if (!result.ok) return res.status(403).json({ error: result.error });
+      if (!result.ok) {
+        logSignatureFailure(HANDLER.verify, result.error, { jobId, issuer: job.issuer });
+        return res.status(403).json({ error: result.error });
+      }
     }
 
     if (!approved) {
@@ -608,7 +710,7 @@ export async function verify(req, res) {
       return res.json({ jobId, status: newStatus, txHash: receipt.hash });
     }
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.verify, err, { jobId: req.params?.jobId });
     const isNoDeposit = err.data === "0xd76ebd0f" || (err.info && err.info.error && err.info.error.data === "0xd76ebd0f");
     const reverted = err.receipt && err.receipt.status === 0;
     if ((err.code === "CALL_EXCEPTION" && isNoDeposit) || reverted) {
@@ -639,7 +741,7 @@ export async function getReputation(req, res) {
     const tierNames = { 0: "none", 1: "bronze", 2: "silver", 3: "gold" };
     return res.json({ ...score, tierName: tierNames[score.tier] ?? "none" });
   } catch (err) {
-    console.error(err);
+    logError(HANDLER.getReputation, err, { address: req.params?.address });
     return res.status(500).json({ error: err.message || "Reputation fetch failed" });
   }
 }

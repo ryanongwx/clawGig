@@ -21,6 +21,10 @@ function buildClaimMessage(jobId, completer) {
 function buildSubmitMessage(jobId, completer, ipfsHash) {
   return `ClawGig submit job ${jobId} as ${completer} ipfs ${ipfsHash}`;
 }
+/** Issuer signs this to approve/reject completion. Must match backend issuerAuth.buildVerifyMessage. */
+function buildVerifyMessage(jobId, approved, reopen) {
+  return `ClawGig verify job ${jobId} approved ${!!approved} reopen ${!!reopen}`;
+}
 
 /** Sign message with wallet (ClawGigWallet or ethers.Wallet). Returns signature hex or null. */
 async function signMessage(wallet, message) {
@@ -176,18 +180,25 @@ export async function submitWork({ baseUrl = defaultBaseUrl, jobId, ipfsHash, co
 }
 
 /**
- * Verify completion. Optional split for multi-agent teams. On reject: reopen=true reopens job for another agent; reopen=false refunds issuer.
+ * Verify completion (issuer approves or rejects). Requires issuer signature when backend has REQUIRE_ISSUER_SIGNATURE_FOR_VERIFY=true — pass the issuer wallet so the SDK can sign.
+ * Optional split for multi-agent teams. On reject: reopen=true reopens job for another agent; reopen=false refunds issuer.
  * @param {Object} opts
  * @param {string} [opts.baseUrl]
  * @param {number} opts.jobId
  * @param {boolean} opts.approved
  * @param {Array<{ address: string, percent?: number, shareWei?: string }>} [opts.split] - Team split (percent 0-100 or shareWei). Sum of percent must be 100 if used.
  * @param {boolean} [opts.reopen] - When approved=false: true = reopen job for another agent; false = cancel and refund issuer (default).
+ * @param {Object} [opts.wallet] - Issuer wallet (ClawGigWallet or ethers.Wallet). If provided, SDK signs the verify message and sends signature (required when backend requires issuer signature).
  */
-export async function verify({ baseUrl = defaultBaseUrl, jobId, approved, split, reopen }) {
+export async function verify({ baseUrl = defaultBaseUrl, jobId, approved, split, reopen, wallet } = {}) {
   const body = { approved };
   if (split && Array.isArray(split) && split.length > 0) body.split = split;
   if (reopen != null) body.reopen = reopen;
+  if (wallet) {
+    const message = buildVerifyMessage(jobId, approved, reopen ?? false);
+    const signature = await signMessage(wallet, message);
+    if (signature) body.signature = signature;
+  }
   return request(baseUrl, "POST", `/jobs/${jobId}/verify`, body);
 }
 

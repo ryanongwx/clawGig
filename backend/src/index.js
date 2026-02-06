@@ -46,6 +46,7 @@ app.use(
   })
 );
 
+app.get("/", (_, res) => res.json({ status: "ok", service: "clawgig-api" }));
 app.get("/health", (_, res) => res.json({ status: "ok", service: "clawgig-api" }));
 app.get("/reputation/:address", getReputation);
 app.use("/jobs", jobsRouter);

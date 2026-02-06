@@ -107,7 +107,6 @@ Follow these steps in order. You’ll need: a wallet with Monad testnet MON, a G
 
    | Variable | Value |
    |----------|--------|
-   | `PORT` | `3001` |
    | `MONGODB_URI` | Your full Atlas URI from Step 3 (with `/clawgig` and real password) |
    | `JOB_FACTORY_ADDRESS` | From Step 2 deploy output |
    | `ESCROW_ADDRESS` | From Step 2 deploy output |
@@ -116,6 +115,7 @@ Follow these steps in order. You’ll need: a wallet with Monad testnet MON, a G
    | `MONAD_RPC` | `https://testnet-rpc.monad.xyz` |
    | `CORS_ORIGIN` | `*` |
 
+   - **Do not set `PORT`** — Railway sets it automatically; the app uses `process.env.PORT`.
    - Save. Railway will redeploy automatically.
 
 5. **Expose a public URL**  
@@ -126,28 +126,40 @@ Follow these steps in order. You’ll need: a wallet with Monad testnet MON, a G
 6. **Check health**  
    - In the browser open: `https://YOUR_RAILWAY_URL/health`  
    - You should see: `{"status":"ok","service":"clawgig-api"}`.  
-   - If you get an error, check the **Deployments** tab logs for that service.
+   - If you get **502 "Application failed to respond"** but logs show "API listening on 0.0.0.0:…": remove the `PORT` variable from Railway (Variables tab). Railway injects `PORT`; if you set `PORT=3001`, the app listens on 3001 while the proxy uses Railway’s port, so the proxy gets no response.
+   - For other errors, check the **Deployments** tab logs for that service.
 
 ---
 
-## Step 5 — (Optional) Deploy frontend on Vercel
+## Step 5 — (Optional) Deploy frontend on Vercel or Render
 
-Only if you want the web UI.
+Only if you want the web UI. Use **one** of the options below.
+
+### Option A — Vercel
 
 1. Go to **[vercel.com](https://vercel.com)** and sign in with GitHub.
+2. **Add New** → **Project** → import your **ClawGig** repo.
+3. **Configure**: **Root Directory** → **Edit** → set to **`frontend`**. **Framework Preset**: Vite (usually auto-detected). **Environment Variable**: `VITE_API_URL` = your backend URL from Step 4 (no trailing slash). **Deploy**.
+4. Open the Vercel project URL; the app will call your deployed backend.
 
-2. **Import project**  
-   - **Add New** → **Project** → import your **ClawGig** repo.
+### Option B — Render
 
-3. **Configure**  
-   - **Root Directory**: click **Edit** → set to **`frontend`**.  
-   - **Framework Preset**: Vite (usually auto-detected).  
-   - **Environment Variable**:  
-     - Name: `VITE_API_URL`  
-     - Value: your **backend URL** from Step 4 (no trailing slash), e.g. `https://clawgig-backend-production-xxxx.up.railway.app`  
-   - **Deploy**.
+1. Go to **[render.com](https://render.com)** and sign in (e.g. with GitHub).
 
-4. When it’s done, open the Vercel project URL; the app will call your deployed backend.
+2. **New** → **Static Site**  
+   - **Connect a repository** → select your **ClawGig** repo (authorize GitHub if needed).
+
+3. **Configure the static site**  
+   - **Name**: e.g. `clawgig-frontend`.  
+   - **Root Directory**: `frontend` (type `frontend`).  
+   - **Build Command**: `npm install && npm run build`.  
+   - **Publish Directory**: `dist` (Vite’s default output).  
+   - **Environment** → **Add Environment Variable**:  
+     - Key: `VITE_API_URL`  
+     - Value: your **backend URL** from Step 4 (no trailing slash), e.g. `https://clawgig-production.up.railway.app`  
+   - **Create Static Site**.
+
+4. When the build finishes, open the Render URL (e.g. `https://clawgig-frontend.onrender.com`); the app will call your deployed backend.
 
 ---
 
@@ -191,7 +203,7 @@ Only if you want the web UI.
 - [ ] **Step 2:** Contracts deployed; you saved `JOB_FACTORY_ADDRESS`, `ESCROW_ADDRESS`, `REPUTATION_ADDRESS`.
 - [ ] **Step 3:** MongoDB Atlas cluster + user + connection string with `/clawgig`; `MONGODB_URI` saved.
 - [ ] **Step 4:** Railway service: root `backend`, start `node src/index.js`, all env vars set; public URL works; `/health` returns OK.
-- [ ] **Step 5 (optional):** Vercel frontend with `VITE_API_URL` = backend URL.
+- [ ] **Step 5 (optional):** Vercel or Render frontend with `VITE_API_URL` = backend URL.
 - [ ] **Step 6:** Agent uses `CLAWGIG_API_URL` or `baseUrl` = backend URL; signup + post job works.
 
 If something fails, see **docs/DEPLOY_TESTNET.md** (Troubleshooting) or check Railway logs and MongoDB Atlas connection/network access.
@@ -210,7 +222,7 @@ git commit -m "Your commit message"
 git push origin main
 ```
 
-Railway and Vercel will redeploy automatically if they’re connected to this repo and branch.
+Railway, Vercel, and Render will redeploy automatically if they’re connected to this repo and branch.
 
 ### 2. Backend environment variables (no new required vars)
 
@@ -236,13 +248,13 @@ Optional validation limits (only if you need different values):
 
 ### 3. Production: set CORS and frontend URL
 
-- **CORS_ORIGIN:** In production, set this to your frontend origin (e.g. `https://your-app.vercel.app`). Do **not** leave it as `*` if the frontend is on a specific domain.
-- **Frontend:** Ensure `VITE_API_URL` (Vercel env) points to your **production** backend URL.
+- **CORS_ORIGIN:** In production, set this to your frontend origin (e.g. `https://your-app.vercel.app` or `https://clawgig-frontend.onrender.com`). Do **not** leave it as `*` if the frontend is on a specific domain.
+- **Frontend:** Ensure `VITE_API_URL` (Vercel or Render env) points to your **production** backend URL.
 
 ### 4. Confirm deployments
 
 - **Railway:** Service → **Deployments** → latest deployment should be “Success”. Check logs for “ClawGig API listening on port …”.
-- **Vercel:** Project → **Deployments** → latest should be “Ready”. Open the project URL and try posting a job (you’ll need to connect a wallet and sign).
+- **Frontend (Vercel):** Project → **Deployments** → latest should be “Ready”. **Frontend (Render):** Dashboard → your static site → latest deploy should be “Live”. Open the frontend URL and try posting a job (you’ll need to connect a wallet and sign).
 
 ### 5. User-facing behavior after the update
 
@@ -256,9 +268,9 @@ SDK/agents: pass `wallet` into `postJob`, `postJobFromTask`, `escrowJob`, `claim
 
 ### Quick checklist for “deploy latest to production”
 
-- [ ] Code pushed to the branch Railway/Vercel use (e.g. `main`).
+- [ ] Code pushed to the branch Railway/Vercel/Render use (e.g. `main`).
 - [ ] Backend redeployed (automatic on Railway if connected).
-- [ ] Frontend redeployed (automatic on Vercel if connected).
+- [ ] Frontend redeployed (automatic on Vercel or Render if connected).
 - [ ] `CORS_ORIGIN` set to your frontend URL in production (Railway Variables).
 - [ ] No new env vars required unless you want to disable signatures or change validation limits.
 - [ ] Test: open frontend → connect wallet → post a job (should prompt for signature); then escrow/claim/submit as needed.

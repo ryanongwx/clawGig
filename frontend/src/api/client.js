@@ -18,6 +18,13 @@ export async function postJob({ description, bounty, deadline, issuer, bountyTok
   return request('POST', '/jobs/post', body);
 }
 
+export async function getStats() {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/jobs/stats`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
 export async function browseJobs({
   status = 'open',
   limit = 20,

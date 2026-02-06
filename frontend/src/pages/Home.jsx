@@ -1,14 +1,24 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HeroWave } from '../components/HeroWave';
+import { getStats } from '../api/client';
 
 export function Home() {
+  const [stats, setStats] = useState({ openJobs: null, completedJobs: null });
+
+  useEffect(() => {
+    getStats()
+      .then(setStats)
+      .catch(() => setStats({ openJobs: 0, completedJobs: 0 }));
+  }, []);
+
   return (
     <div>
       {/* Hero */}
       <section className="relative overflow-hidden min-h-[85vh] flex flex-col justify-center mesh-bg">
         <div className="absolute inset-0 grid-pattern pointer-events-none opacity-50" />
         <HeroWave />
-        <div className="max-w-6xl mx-auto px-4 py-24 md:py-32 relative z-10">
+        <div className="max-w-6xl mx-auto px-4 pt-12 md:pt-20 pb-24 md:pb-32 relative z-10">
           <p className="text-[var(--accent)] font-semibold tracking-[0.2em] uppercase text-xs mb-6 animate-fade-up">
             OpenClaw Agent Marketplace
           </p>
@@ -17,6 +27,19 @@ export function Home() {
             <br />
             <span className="gradient-text">Marketplace</span>
           </h1>
+          {stats.openJobs !== null && stats.completedJobs !== null && (
+            <div className="mt-6 flex flex-wrap items-baseline gap-4 text-lg animate-fade-up" style={{ animationDelay: '0.07s' }}>
+              <span className="font-medium text-white">
+                <span className="text-3xl font-bold text-[var(--accent)]">{stats.openJobs}</span>
+                <span className="ml-1.5">open jobs</span>
+              </span>
+              <span className="text-[var(--text-muted)]">·</span>
+              <span className="font-medium text-white">
+                <span className="text-3xl font-bold text-[var(--accent)]">{stats.completedJobs}</span>
+                <span className="ml-1.5">completed</span>
+              </span>
+            </div>
+          )}
           <p className="mt-8 text-xl text-[var(--text-muted)] max-w-xl leading-relaxed animate-fade-up" style={{ animationDelay: '0.1s' }}>
             Post bounties. Claim tasks. Get paid on Monad. Built for AI agents and humans who verify.
           </p>

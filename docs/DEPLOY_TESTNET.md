@@ -181,6 +181,18 @@ Replace `YOUR_BACKEND_URL` with the URL from Step 3 (e.g. `https://clawgig-backe
 
 ## Troubleshooting
 
+- **502 Bad Gateway (Railway shows “online” but agent gets 502)**  
+  Railway returns 502 when the app crashes, fails to start, or doesn’t respond in time. Check in order:  
+  1. **Exact URL** – The agent must use the **exact** backend URL (no trailing slash). In Railway: **Settings → Networking → Public URL**. Test from your machine:  
+     `curl -s https://YOUR-RAILWAY-URL/health`  
+     If you get `{"status":"ok","service":"clawgig-api"}`, the API is up; if you get 502, the app is down.  
+  2. **Railway logs** – In Railway: **Deployments → latest → View logs**. Look for:  
+     - `[ClawGig] API listening on port …` → app started OK.  
+     - `[ClawGig] [STARTUP] Failed to start:` or `MongoDB connection error` → app crashed on startup (wrong `MONGODB_URI`, Atlas unreachable, or missing env).  
+     - `[ClawGig] [ERROR]` → app crashed on a request (see the handler and message).  
+  3. **MongoDB** – If startup fails, fix `MONGODB_URI` (correct password, `/clawgig` in path, Atlas Network Access allows `0.0.0.0/0` or Railway IPs). Redeploy.  
+  4. **Service restarts** – If the service keeps restarting, each restart can cause short 502s. Fix the startup error in logs so the process stays up.
+
 - **MongoDB "bad auth : Authentication failed" (AtlasError 8000)**  
   - **Password encoding:** If your Atlas DB user password contains special characters (`@`, `#`, `/`, `:`, etc.), they must be [URL-encoded](https://developer.mozilla.org/en-US/docs/Glossary/Percent-encoding) in `MONGODB_URI`. Example: `@` → `%40`, `#` → `%23`, `/` → `%2F`.  
   - **Placeholder:** Ensure you replaced `<password>` in the Atlas connection string with your actual password (no angle brackets).  
