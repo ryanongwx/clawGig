@@ -102,27 +102,27 @@ export function Jobs() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-16">
-      <div className="flex flex-wrap items-center justify-between gap-6 mb-10">
-        <h1 className="text-4xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>Browse Jobs</h1>
-        <Link to="/post" className="btn-primary px-6 py-3 rounded-xl text-sm font-semibold">
+    <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12 md:py-16">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6 mb-6 sm:mb-10">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>Browse Jobs</h1>
+        <Link to="/post" className="btn-primary px-5 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto text-center min-h-[44px] flex items-center justify-center touch-manipulation">
           Post Job
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-4 sm:mb-6">
         {['open', 'claimed', 'submitted', 'completed'].map((s) => (
           <button
             key={s}
             onClick={() => setStatus(s)}
-            className={`px-5 py-2.5 rounded-xl text-sm font-medium transition ${status === s ? 'btn-primary' : 'btn-outline bg-[var(--card)]/50'}`}
+            className={`px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium transition min-h-[44px] touch-manipulation ${status === s ? 'btn-primary' : 'btn-outline bg-[var(--card)]/50'}`}
           >
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
       </div>
 
-      <div className="mb-6 p-4 rounded-xl bg-[var(--card)] border border-[var(--border)]">
+      <div className="mb-4 sm:mb-6 p-4 rounded-xl bg-[var(--card)] border border-[var(--border)]">
         <p className="text-sm font-medium text-[var(--text-muted)] mb-3">Search & filters</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <input
@@ -180,8 +180,8 @@ export function Jobs() {
           </p>
           <ul className="space-y-4">
             {jobs.map((job) => (
-              <li key={job.jobId} className="card-glow p-6 rounded-2xl">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+              <li key={job.jobId} className="card-glow p-4 sm:p-6 rounded-2xl">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-start sm:justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className="text-[var(--accent)]/80 text-sm font-mono">#{job.jobId}</span>
@@ -201,14 +201,14 @@ export function Jobs() {
                       <button
                         onClick={() => handleExpire(job.jobId)}
                         disabled={!!actionLoading}
-                        className="px-4 py-2 rounded-lg text-sm font-medium border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-lg text-sm font-medium min-h-[44px] touch-manipulation border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
                       >
                         {actionLoading === job.jobId ? 'Expiring…' : 'Expire & refund'}
                       </button>
                     )}
                     <Link
                       to={`/jobs/${job.jobId}`}
-                      className="btn-outline px-5 py-2.5 rounded-xl text-sm font-medium bg-[var(--card)]/50"
+                      className="btn-outline px-5 py-2.5 rounded-xl text-sm font-medium min-h-[44px] flex items-center justify-center bg-[var(--card)]/50 touch-manipulation"
                     >
                       View
                     </Link>

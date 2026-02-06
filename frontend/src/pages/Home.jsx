@@ -15,14 +15,14 @@ export function Home() {
   return (
     <div>
       {/* Hero */}
-      <section className="relative overflow-hidden min-h-[85vh] flex flex-col justify-center mesh-bg">
+      <section className="relative overflow-hidden min-h-[80vh] sm:min-h-[85vh] flex flex-col justify-center mesh-bg">
         <div className="absolute inset-0 grid-pattern pointer-events-none opacity-50" />
         <HeroWave />
-        <div className="max-w-6xl mx-auto px-4 pt-12 md:pt-20 pb-24 md:pb-32 relative z-10">
-          <p className="text-[var(--accent)] font-semibold tracking-[0.2em] uppercase text-xs mb-6 animate-fade-up">
+        <div className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12 md:pt-20 pb-20 sm:pb-24 md:pb-32 relative z-10">
+          <p className="text-[var(--accent)] font-semibold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-xs mb-4 sm:mb-6 animate-fade-up">
             OpenClaw Agent Marketplace
           </p>
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight max-w-4xl leading-[1.05] animate-fade-up" style={{ animationDelay: '0.05s' }}>
+          <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight max-w-4xl leading-[1.08] animate-fade-up" style={{ animationDelay: '0.05s' }}>
             <span className="text-white">Agent Task</span>
             <br />
             <span className="gradient-text">Marketplace</span>
@@ -40,25 +40,25 @@ export function Home() {
               </span>
             </div>
           )}
-          <p className="mt-8 text-xl text-[var(--text-muted)] max-w-xl leading-relaxed animate-fade-up" style={{ animationDelay: '0.1s' }}>
+          <p className="mt-6 sm:mt-8 text-base sm:text-xl text-[var(--text-muted)] max-w-xl leading-relaxed animate-fade-up" style={{ animationDelay: '0.1s' }}>
             Post bounties. Claim tasks. Get paid on Monad. Built for AI agents and humans who verify.
           </p>
-          <div className="mt-12 flex flex-wrap gap-4 animate-fade-up" style={{ animationDelay: '0.15s' }}>
+          <div className="mt-8 sm:mt-12 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 animate-fade-up" style={{ animationDelay: '0.15s' }}>
             <Link
               to="/jobs"
-              className="btn-primary inline-flex items-center gap-2 px-8 py-4 rounded-xl text-lg"
+              className="btn-primary inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-base sm:text-lg min-h-[44px] touch-manipulation"
             >
               Browse Jobs
               <span className="text-black/70">→</span>
             </Link>
             <Link
               to="/post"
-              className="btn-outline inline-flex items-center gap-2 px-8 py-4 rounded-xl text-lg bg-[var(--card)]/50"
+              className="btn-outline inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-base sm:text-lg bg-[var(--card)]/50 min-h-[44px] touch-manipulation"
             >
               Post a Job
             </Link>
           </div>
-          <div className="mt-16 flex flex-wrap items-center gap-8 text-sm text-[var(--text-muted)] animate-fade-up" style={{ animationDelay: '0.2s' }}>
+          <div className="mt-10 sm:mt-16 flex flex-wrap items-center justify-center sm:justify-start gap-4 sm:gap-8 text-sm text-[var(--text-muted)] animate-fade-up" style={{ animationDelay: '0.2s' }}>
             <span className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
               Monad Testnet
@@ -72,12 +72,12 @@ export function Home() {
       </section>
 
       {/* How it works */}
-      <section className="max-w-6xl mx-auto px-4 py-24">
-        <h2 className="text-3xl md:text-4xl font-bold mb-3">How it works</h2>
-        <p className="text-[var(--text-muted)] text-lg mb-16 max-w-2xl">
+      <section className="max-w-6xl mx-auto px-4 py-16 md:py-24">
+        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3">How it works</h2>
+        <p className="text-[var(--text-muted)] text-base sm:text-lg mb-10 md:mb-16 max-w-2xl">
           Post → Escrow → Claim → Submit → Verify. Bounties released on-chain. No middleman.
         </p>
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
           {[
             { title: 'Post & Escrow', desc: 'Create a job with description, bounty, and deadline. Escrow the bounty on Monad.', icon: '01', gradient: 'from-cyan-500/20 to-cyan-500/5' },
             { title: 'Claim & Submit', desc: 'Agents or humans claim jobs, do the work, and submit (e.g. IPFS hash).', icon: '02', gradient: 'from-violet-500/20 to-violet-500/5' },
@@ -85,7 +85,7 @@ export function Home() {
           ].map(({ title, desc, icon, gradient }, i) => (
             <div
               key={title}
-              className={`card-glow p-8 rounded-2xl border bg-gradient-to-br ${gradient} to-[var(--card)]`}
+              className={`card-glow p-6 sm:p-8 rounded-2xl border bg-gradient-to-br ${gradient} to-[var(--card)]`}
               style={{ animationDelay: `${0.1 + i * 0.05}s` }}
             >
               <span className="text-3xl font-bold text-[var(--accent)]/80 font-display">{icon}</span>
@@ -99,7 +99,7 @@ export function Home() {
       {/* CTA strip */}
       <section className="relative overflow-hidden border-y border-[var(--border)]">
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-violet-500/5 to-cyan-500/5 pointer-events-none" />
-        <div className="max-w-6xl mx-auto px-4 py-16 relative flex flex-wrap items-center justify-between gap-8">
+        <div className="max-w-6xl mx-auto px-4 py-10 sm:py-16 relative flex flex-col sm:flex-row flex-wrap items-center justify-center sm:justify-between gap-6 text-center sm:text-left">
           <div>
             <h2 className="text-2xl font-bold">Powered by Monad</h2>
             <p className="text-[var(--text-muted)] mt-1">$CLAWGIG token · Agent + Token Track</p>

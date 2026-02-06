@@ -77,8 +77,8 @@ export function JobDetail() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
-      <button onClick={() => navigate('/jobs')} className="text-zinc-400 hover:text-white text-sm mb-6">← Back to jobs</button>
+    <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
+      <button onClick={() => navigate('/jobs')} className="text-zinc-400 hover:text-white text-sm mb-6 min-h-[44px] touch-manipulation flex items-center">← Back to jobs</button>
 
       {error && (
         <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -86,7 +86,7 @@ export function JobDetail() {
         </div>
       )}
 
-      <div className="p-6 rounded-xl border border-[var(--border)] bg-[var(--card)] mb-6">
+      <div className="p-4 sm:p-6 rounded-xl border border-[var(--border)] bg-[var(--card)] mb-6">
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-zinc-500">#{job.jobId}</span>
           <span className="px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-300">{job.status}</span>
@@ -94,7 +94,7 @@ export function JobDetail() {
             <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">Expired</span>
           )}
         </div>
-        <h1 className="text-xl font-bold mb-4 whitespace-pre-wrap">{job.description}</h1>
+        <h1 className="text-lg sm:text-xl font-bold mb-4 whitespace-pre-wrap break-words">{job.description}</h1>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
           <dt className="text-zinc-500">Bounty</dt>
           <dd>{formatBounty(job.bounty, job.bountyToken)}</dd>
@@ -139,7 +139,7 @@ export function JobDetail() {
             )}
             <div className="p-4 rounded-lg bg-zinc-900/50 border border-[var(--border)]">
               <p className="text-sm text-zinc-400 mb-2">Escrow bounty (backend wallet deposits). Then completer can claim.</p>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-3">
                 <button
                   onClick={() =>
                     runAction('escrow', async () => {
@@ -148,7 +148,7 @@ export function JobDetail() {
                     })
                   }
                   disabled={!!actionLoading}
-                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-black font-medium hover:bg-cyan-300 disabled:opacity-50"
+                  className="px-4 py-3 rounded-lg min-h-[44px] touch-manipulation bg-[var(--accent)] text-black font-medium hover:bg-cyan-300 disabled:opacity-50"
                 >
                   {actionLoading === 'escrow' ? 'Escrowing…' : 'Escrow Bounty'}
                 </button>
@@ -160,7 +160,7 @@ export function JobDetail() {
                     })
                   }
                   disabled={!!actionLoading}
-                  className="px-4 py-2 rounded-lg border border-red-400/50 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                  className="px-4 py-3 rounded-lg min-h-[44px] touch-manipulation border border-red-400/50 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                 >
                   {actionLoading === 'cancel' ? 'Cancelling…' : 'Cancel job & refund'}
                 </button>
@@ -184,7 +184,7 @@ export function JobDetail() {
                   })
                 }
                 disabled={!!actionLoading || !completer.trim()}
-                className="px-4 py-2 rounded-lg border border-[var(--accent)] text-[var(--accent)] hover:bg-cyan-500/10 disabled:opacity-50"
+                className="px-4 py-3 rounded-lg min-h-[44px] touch-manipulation border border-[var(--accent)] text-[var(--accent)] hover:bg-cyan-500/10 disabled:opacity-50"
               >
                 {actionLoading === 'claim' ? 'Claiming…' : 'Claim Job'}
               </button>
@@ -211,7 +211,7 @@ export function JobDetail() {
                 })
               }
               disabled={!!actionLoading || !ipfsHash.trim()}
-              className="px-4 py-2 rounded-lg bg-[var(--accent)] text-black font-medium hover:bg-cyan-300 disabled:opacity-50"
+              className="px-4 py-3 rounded-lg min-h-[44px] touch-manipulation bg-[var(--accent)] text-black font-medium hover:bg-cyan-300 disabled:opacity-50"
             >
               {actionLoading === 'submit' ? 'Submitting…' : 'Submit Work'}
             </button>
@@ -233,12 +233,12 @@ export function JobDetail() {
                   })
                 }
                 disabled={!!actionLoading}
-                className="px-4 py-2 rounded-lg font-medium disabled:opacity-50 bg-[var(--success)] text-black hover:opacity-90"
+                className="w-full sm:w-auto px-4 py-3 rounded-lg min-h-[44px] touch-manipulation font-medium disabled:opacity-50 bg-[var(--success)] text-black hover:opacity-90"
               >
                 {actionLoading === 'verify' ? 'Verifying…' : 'Approve & Release'}
               </button>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                 <button
                   onClick={() =>
                     runAction('verify', async () => {
@@ -247,7 +247,7 @@ export function JobDetail() {
                     })
                   }
                   disabled={!!actionLoading}
-                  className="px-4 py-2 rounded-lg font-medium disabled:opacity-50 bg-zinc-600 text-white hover:bg-zinc-500"
+                  className="w-full sm:w-auto px-4 py-3 rounded-lg min-h-[44px] touch-manipulation font-medium disabled:opacity-50 bg-zinc-600 text-white hover:bg-zinc-500"
                 >
                   {actionLoading === 'verify' ? 'Verifying…' : 'Reject & refund issuer'}
                 </button>
@@ -259,7 +259,7 @@ export function JobDetail() {
                     })
                   }
                   disabled={!!actionLoading}
-                  className="px-4 py-2 rounded-lg font-medium disabled:opacity-50 border border-[var(--accent)] text-[var(--accent)] hover:bg-cyan-500/10"
+                  className="w-full sm:w-auto px-4 py-3 rounded-lg min-h-[44px] touch-manipulation font-medium disabled:opacity-50 border border-[var(--accent)] text-[var(--accent)] hover:bg-cyan-500/10"
                 >
                   {actionLoading === 'verify' ? 'Verifying…' : 'Reject & reopen for another agent'}
                 </button>

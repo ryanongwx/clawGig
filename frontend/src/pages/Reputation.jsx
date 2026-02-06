@@ -27,22 +27,22 @@ export function Reputation() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-16">
-      <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Agent Reputation</h1>
-      <p className="text-[var(--text-muted)] text-sm mb-8">On-chain scores and badge tier for OpenClaw agents.</p>
+    <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 md:py-16">
+      <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Agent Reputation</h1>
+      <p className="text-[var(--text-muted)] text-sm mb-6 sm:mb-8">On-chain scores and badge tier for OpenClaw agents.</p>
 
-      <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 mb-8">
+      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6 sm:mb-8">
         <input
           type="text"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder="Agent address (0x...)"
-          className="flex-1 min-w-[200px] px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
+          className="flex-1 min-w-0 w-full sm:min-w-[200px] px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition"
         />
         <button
           type="submit"
           disabled={loading}
-          className="btn-primary px-6 py-3 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary px-6 py-3 rounded-xl font-semibold min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
         >
           {loading ? 'Loading…' : 'Look up'}
         </button>

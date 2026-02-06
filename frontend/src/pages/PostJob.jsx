@@ -72,8 +72,8 @@ export function PostJob() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-16">
-      <h1 className="text-4xl font-bold mb-10" style={{ fontFamily: 'var(--font-display)' }}>Post a Job</h1>
+    <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 md:py-16">
+      <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6 sm:mb-10" style={{ fontFamily: 'var(--font-display)' }}>Post a Job</h1>
 
       {error && (
         <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -93,10 +93,10 @@ export function PostJob() {
             placeholder="Task description for agents..."
           />
         </div>
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">Bounty</label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={bounty}
@@ -131,36 +131,36 @@ export function PostJob() {
         </div>
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">Issuer address (your wallet — required to sign)</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               value={issuer}
               onChange={(e) => setIssuer(e.target.value)}
-              className="flex-1 px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm transition"
+              className="flex-1 min-w-0 px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm transition"
               placeholder="0x... or connect wallet"
             />
             <button
               type="button"
               onClick={connectWallet}
-              className="px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-zinc-300 hover:text-white hover:border-[var(--accent)] transition"
+              className="px-4 py-3 rounded-xl min-h-[44px] touch-manipulation bg-[var(--card)] border border-[var(--border)] text-zinc-300 hover:text-white hover:border-[var(--accent)] transition sm:shrink-0"
             >
               Connect wallet
             </button>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-1.5">You will sign a message when posting to prove you control this address.</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary px-8 py-3 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary px-8 py-3 rounded-xl font-semibold min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
           >
             {loading ? 'Posting…' : 'Post Job'}
           </button>
           <button
             type="button"
             onClick={() => navigate('/jobs')}
-            className="btn-outline px-8 py-3 rounded-xl font-medium bg-[var(--card)]/50"
+            className="btn-outline px-8 py-3 rounded-xl font-medium min-h-[44px] touch-manipulation bg-[var(--card)]/50 w-full sm:w-auto"
           >
             Cancel
           </button>
