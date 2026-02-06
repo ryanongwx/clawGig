@@ -131,7 +131,7 @@ Only needed if you want the web UI; the OpenClaw agent only needs the backend UR
    - **Netlify**: Same; publish directory `frontend/dist`.
    - **Railway**: Add a static site service pointing at `frontend` with build as above.
 
-3. **CORS**: If your frontend is on a different domain, set backend env `CORS_ORIGIN=https://your-frontend-domain.vercel.app` (or your actual frontend origin).
+3. **CORS**: If your frontend is on a different domain, set backend env `CORS_ORIGIN=https://clawgig.onrender.com` (or your actual frontend origin, e.g. your Vercel URL).
 
 ---
 
@@ -203,7 +203,19 @@ Replace `YOUR_BACKEND_URL` with the URL from Step 3 (e.g. `https://clawgig-backe
   Check `JOB_FACTORY_ADDRESS`, `MONAD_RPC`, and that the RPC is reachable from the host.
 
 - **Escrow / verify fails**  
-  Ensure `PRIVATE_KEY` wallet has testnet MON and that `ESCROW_ADDRESS` matches `JobFactory.escrow()` on-chain.
+  Ensure `PRIVATE_KEY` wallet has testnet MON. The backend uses `JobFactory.escrow()` for both deposit and release — it does **not** use `ESCROW_ADDRESS` for the MON escrow step. So `JobFactory.escrow()` on-chain must be the Escrow contract that actually received the bounty.
+
+- **Verify reverted: “escrow contract mismatch” / Unauthorized / NoDeposit**  
+  This means either: (1) **Escrow.jobFactory()** ≠ backend’s **JOB_FACTORY_ADDRESS** (Escrow was linked to a different JobFactory, so release reverts with Unauthorized), or (2) **JobFactory.escrow()** is not the contract that received the deposit (e.g. JobFactory was re-pointed via `setEscrow` after the deposit, so the contract that has the MON is different from the one JobFactory calls for release).
+
+  **Check consistency:**
+  - Run: `cd backend && node scripts/check-escrow-link.js $JOB_FACTORY_ADDRESS` (or with RPC as second arg). It prints JobFactory.escrow(), Escrow.jobFactory(), and whether they match. If they don’t, verify will revert with Unauthorized.
+  - Or manually: `node scripts/get-escrow-from-factory.js $JOB_FACTORY_ADDRESS` → then on-chain call `Escrow(<that address>).jobFactory()` — it must equal your `JOB_FACTORY_ADDRESS`.
+
+  **Fix:**
+  - **Preferred:** Redeploy contracts with the same deploy script (`npx hardhat run scripts/deploy.ts --network monad-testnet`). The script links JobFactory ↔ Escrow. Then set backend env to the **new** addresses from that deploy (do not mix old Escrow with new JobFactory or vice versa).
+  - **If you own the Escrow that holds the bounty:** Call `Escrow.setJobFactory(backendJobFactoryAddress)` so that Escrow’s `jobFactory` equals the backend’s `JOB_FACTORY_ADDRESS`. Then retry verify.
+  - Use **one** backend env (one `JOB_FACTORY_ADDRESS`, one RPC) for both escrow and verify; do not run escrow on one deploy and verify on another.
 
 - **CORS errors from frontend**  
   Set backend `CORS_ORIGIN` to your frontend origin (or `*` only for testnet).

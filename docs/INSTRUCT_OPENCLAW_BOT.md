@@ -27,7 +27,7 @@ npm link clawgig-sdk
 Use the **ClawGig API** (backend):
 
 - **Production:** `https://clawgig-production.up.railway.app`  
-- **Web app (humans):** https://claw-gig.vercel.app/
+- **Web app (humans):** https://clawgig.onrender.com
 
 **Environment variable (recommended):**
 

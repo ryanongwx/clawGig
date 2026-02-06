@@ -150,7 +150,7 @@ Only if you want the web UI. Use **one** of the options below.
    - **Connect a repository** → select your **ClawGig** repo (authorize GitHub if needed).
 
 3. **Configure the static site**  
-   - **Name**: e.g. `clawgig-frontend`.  
+   - **Name**: e.g. `clawgig` (Render will give a URL like `https://clawgig.onrender.com`).  
    - **Root Directory**: `frontend` (type `frontend`).  
    - **Build Command**: `npm install && npm run build`.  
    - **Publish Directory**: `dist` (Vite’s default output).  
@@ -159,7 +159,7 @@ Only if you want the web UI. Use **one** of the options below.
      - Value: your **backend URL** from Step 4 (no trailing slash), e.g. `https://clawgig-production.up.railway.app`  
    - **Create Static Site**.
 
-4. When the build finishes, open the Render URL (e.g. `https://clawgig-frontend.onrender.com`); the app will call your deployed backend.
+4. When the build finishes, open the Render URL (e.g. `https://clawgig.onrender.com`); the app will call your deployed backend.
 
 ---
 
@@ -248,13 +248,13 @@ Optional validation limits (only if you need different values):
 
 ### 3. Production: set CORS and frontend URL
 
-- **CORS_ORIGIN:** In production, set this to your frontend origin (e.g. `https://your-app.vercel.app` or `https://clawgig-frontend.onrender.com`). Do **not** leave it as `*` if the frontend is on a specific domain.
+- **CORS_ORIGIN:** In production, set this to your frontend origin (e.g. `https://clawgig.onrender.com` or `https://your-app.vercel.app`). Do **not** leave it as `*` if the frontend is on a specific domain.
 - **Frontend:** Ensure `VITE_API_URL` (Vercel or Render env) points to your **production** backend URL.
 
 ### 4. Confirm deployments
 
 - **Railway:** Service → **Deployments** → latest deployment should be “Success”. Check logs for “ClawGig API listening on port …”.
-- **Frontend (Vercel):** Project → **Deployments** → latest should be “Ready”. **Frontend (Render):** Dashboard → your static site → latest deploy should be “Live”. Open the frontend URL and try posting a job (you’ll need to connect a wallet and sign).
+- **Frontend (Vercel):** Project → **Deployments** → latest should be “Ready”. **Frontend (Render):** Dashboard → your static site → latest deploy should be “Live”. Open the frontend URL (e.g. https://clawgig.onrender.com) and try posting a job (you’ll need to connect a wallet and sign).
 
 ### 5. User-facing behavior after the update
 

@@ -616,7 +616,6 @@ export async function verify(req, res) {
     }
 
     const newStatus = "completed";
-    await Job.updateOne({ jobId }, { status: newStatus });
     {
       const factory = getContractJobFactory();
       if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
@@ -682,6 +681,7 @@ export async function verify(req, res) {
           { gasLimit: 200000 }
         );
         const receipt = await tx.wait();
+        await Job.updateOne({ jobId }, { status: newStatus });
         const reputation = getContractReputation();
         if (reputation) {
           try {
@@ -695,8 +695,10 @@ export async function verify(req, res) {
         return res.json({ jobId, status: newStatus, txHash: receipt.hash, split: true });
       }
 
-      const tx = await factory.completeAndRelease(jobId, job.completer, { gasLimit: 150000 });
+      // Gas: 150k was too low (tx reverted with gasUsed=150000). Use 300k for completeAndRelease + Escrow.release + transfer.
+      const tx = await factory.completeAndRelease(jobId, job.completer, { gasLimit: 300000 });
       const receipt = await tx.wait();
+      await Job.updateOne({ jobId }, { status: newStatus });
       const reputation = getContractReputation();
       if (reputation) {
         try {
@@ -711,16 +713,30 @@ export async function verify(req, res) {
     }
   } catch (err) {
     logError(HANDLER.verify, err, { jobId: req.params?.jobId });
+    const msg = (err.message || "").toLowerCase();
     const isNoDeposit = err.data === "0xd76ebd0f" || (err.info && err.info.error && err.info.error.data === "0xd76ebd0f");
+    const isUnauthorized = msg.includes("unauthorized") || (err.data && err.data.startsWith("0x82b42900"));
+    const isTransferFailed = msg.includes("transferfailed") || msg.includes("transfer failed");
     const reverted = err.receipt && err.receipt.status === 0;
-    if ((err.code === "CALL_EXCEPTION" && isNoDeposit) || reverted) {
+    if ((err.code === "CALL_EXCEPTION" && (isNoDeposit || isUnauthorized || isTransferFailed)) || reverted) {
       const factory = getContractJobFactory();
       const chainEscrow = factory ? await factory.escrow() : null;
+      const errorMsg = isUnauthorized
+        ? "Escrow.jobFactory() does not match the JobFactory calling release (Unauthorized). The Escrow that holds the bounty expects a different JobFactory. Do not mix contracts from different deploys."
+        : isTransferFailed
+          ? "Escrow.release reverted (TransferFailed). The completer address rejected the MON transfer or is a contract that cannot receive native token. Use an EOA (externally owned account) that can receive MON."
+          : reverted
+            ? "completeAndRelease tx reverted on-chain. Common causes: NoDeposit (Escrow has no bounty for this job), Unauthorized (Escrow.jobFactory() ≠ JOB_FACTORY_ADDRESS), TransferFailed (completer rejected MON). Check Railway logs for the exact revert reason."
+            : "Escrow.release reverted (NoDeposit). JobFactory is calling a different Escrow than the one you deposited to.";
+      const fixMsg = isUnauthorized
+        ? "Redeploy contracts with the same deploy script so JobFactory and Escrow are linked, or call Escrow.setJobFactory(backendJobFactoryAddress) if you own that Escrow. See docs/DEPLOY_TESTNET.md (Verify reverted: escrow contract mismatch)."
+        : isTransferFailed
+          ? "Ensure the completer address is an EOA (wallet) that accepts MON. If it is a contract, it must have a receive() or fallback() that accepts ETH/MON."
+          : "Run: node scripts/check-escrow-link.js $JOB_FACTORY_ADDRESS. Ensure escrow and verify use the same backend env. If link is OK, the revert may be TransferFailed (completer cannot receive MON).";
       return res.status(400).json({
-        error: reverted
-          ? "completeAndRelease tx reverted on-chain (NoDeposit or Unauthorized). Escrow that JobFactory uses has no deposit for this job."
-          : "Escrow.release reverted (NoDeposit). JobFactory is calling a different Escrow than the one you deposit to.",
-        fix: "Ensure step 2 (escrow) and step 5 (verify) use the same chain. Use a single MONAD_TESTNET_RPC URL. On explorer: JobFactory.escrow() must equal the contract that received the deposit in step 2.",
+        error: errorMsg,
+        fix: fixMsg,
+        jobFactoryEscrow: chainEscrow || undefined,
         setInEnv: chainEscrow ? "ESCROW_ADDRESS=" + chainEscrow : "Run: cd backend && node scripts/get-escrow-from-factory.js " + process.env.JOB_FACTORY_ADDRESS,
       });
     }

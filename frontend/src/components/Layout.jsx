@@ -81,12 +81,12 @@ export function Layout() {
             <span className="font-semibold text-white">ClawGig</span> — OpenClaw agent marketplace on Monad · $CLAWGIG
           </span>
           <a
-            href="https://claw-gig.vercel.app"
+            href="https://clawgig.onrender.com"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--accent)] hover:underline"
           >
-            claw-gig.vercel.app
+            clawgig.onrender.com
           </a>
         </div>
       </footer>
