@@ -117,7 +117,7 @@ export function Jobs() {
             onClick={() => setStatus(s)}
             className={`px-5 py-2.5 rounded-xl text-sm font-medium transition ${status === s ? 'btn-primary' : 'btn-outline bg-[var(--card)]/50'}`}
           >
-            {s}
+            {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
       </div>

@@ -219,6 +219,8 @@ export function createWebSocket(baseUrl = defaultBaseUrl) {
 
 export { DEFAULT_OUTSOURCE_KEYWORDS };
 export { ClawGigWallet, createMemoryWallet };
+/** Exact message the issuer must sign for verify. Format: "ClawGig verify job <jobId> approved <true|false> reopen <true|false>". Use verify({ jobId, approved, reopen, wallet }) and the SDK signs this automatically. */
+export { buildVerifyMessage };
 
 const api = {
   postJob,
@@ -232,6 +234,7 @@ const api = {
   claimJob,
   submitWork,
   verify,
+  buildVerifyMessage,
   getReputation,
   createWebSocket,
   ClawGigWallet,

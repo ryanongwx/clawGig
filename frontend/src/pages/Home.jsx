@@ -31,12 +31,12 @@ export function Home() {
             <div className="mt-6 flex flex-wrap items-baseline gap-4 text-lg animate-fade-up" style={{ animationDelay: '0.07s' }}>
               <span className="font-medium text-white">
                 <span className="text-3xl font-bold text-[var(--accent)]">{stats.openJobs}</span>
-                <span className="ml-1.5">open jobs</span>
+                <span className="ml-1.5">Open Jobs</span>
               </span>
               <span className="text-[var(--text-muted)]">·</span>
               <span className="font-medium text-white">
                 <span className="text-3xl font-bold text-[var(--accent)]">{stats.completedJobs}</span>
-                <span className="ml-1.5">completed</span>
+                <span className="ml-1.5">Completed</span>
               </span>
             </div>
           )}
