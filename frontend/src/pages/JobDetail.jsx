@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getJob, escrowJob, claimJob, cancelJob, submitWork, verifyJob, expireJob } from '../api/client';
+import { getJob, escrowJob, claimJob, cancelJob, submitWork, verifyJob, expireJob, disputeJob, finalizeReject, claimTimeoutRelease, getReputationIssuer } from '../api/client';
 import { signIssuerAction } from '../api/issuerSign';
 import { signCompleterAction } from '../api/completerSign';
 
@@ -27,6 +27,7 @@ export function JobDetail() {
   const [completer, setCompleter] = useState('');
   const [ipfsHash, setIpfsHash] = useState('');
   const [approved, setApproved] = useState(true);
+  const [issuerStats, setIssuerStats] = useState(null);
 
   const fetchJob = () => {
     if (!jobId) return;
@@ -45,6 +46,13 @@ export function JobDetail() {
     if (!jobId) return;
     fetchJob();
   }, [jobId]);
+
+  useEffect(() => {
+    if (!job?.issuer) return;
+    getReputationIssuer(job.issuer)
+      .then((s) => setIssuerStats(s))
+      .catch(() => setIssuerStats(null));
+  }, [job?.issuer]);
 
   const runAction = async (name, fn) => {
     setActionLoading(name);
@@ -115,6 +123,11 @@ export function JobDetail() {
             </>
           )}
         </dl>
+        {issuerStats != null && (
+          <p className="text-xs text-zinc-500 mt-3 pt-3 border-t border-[var(--border)]">
+            Issuer stats: {issuerStats.completedCount} completed, {issuerStats.rejectedCount} rejected, {issuerStats.disputedCount} disputed
+          </p>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -220,6 +233,11 @@ export function JobDetail() {
         )}
         {job.status === 'submitted' && (
           <div className="p-4 rounded-lg bg-zinc-900/50 border border-[var(--border)]">
+            {job.submittedAt && (
+              <p className="text-sm text-zinc-400 mb-3">
+                Issuer has until {formatDate(new Date(new Date(job.submittedAt).getTime() + 7 * 24 * 60 * 60 * 1000))} to approve or reject. After that, anyone can claim timeout release to pay the completer.
+              </p>
+            )}
             <label className="flex items-center gap-2 text-sm text-zinc-400 mb-3">
               <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
               Approve completion (release bounty to completer)
@@ -264,6 +282,48 @@ export function JobDetail() {
                   {actionLoading === 'verify' ? 'Verifying…' : 'Reject & reopen for another agent'}
                 </button>
               </div>
+            )}
+            <div className="mt-3 pt-3 border-t border-[var(--border)]">
+              <p className="text-xs text-zinc-500 mb-2">If the issuer does nothing for 7 days, anyone can release the bounty to the completer.</p>
+              <button
+                onClick={() => runAction('claimTimeout', () => claimTimeoutRelease(job.jobId))}
+                disabled={!!actionLoading}
+                className="px-4 py-2 rounded-lg min-h-[44px] touch-manipulation text-sm border border-zinc-500 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {actionLoading === 'claimTimeout' ? 'Claiming…' : 'Claim timeout release (after 7 days)'}
+              </button>
+            </div>
+          </div>
+        )}
+        {(job.status === 'rejected_pending_dispute' || job.status === 'disputed') && (
+          <div className="p-4 rounded-lg bg-zinc-900/50 border border-[var(--border)]">
+            {job.status === 'rejected_pending_dispute' && (
+              <>
+                <p className="text-sm text-zinc-400 mb-2">
+                  Issuer rejected. You have until {job.disputeDeadline ? formatDate(job.disputeDeadline) : '—'} to open a dispute. An arbiter can then resolve (release to you or refund issuer).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => runAction('dispute', () => disputeJob(job.jobId, { completer: job.completer }))}
+                    disabled={!!actionLoading || !job.completer}
+                    className="px-4 py-3 rounded-lg min-h-[44px] touch-manipulation font-medium border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+                  >
+                    {actionLoading === 'dispute' ? 'Opening…' : 'Open dispute'}
+                  </button>
+                  {job.disputeDeadline && new Date(job.disputeDeadline) < new Date() && (
+                    <button
+                      onClick={() => runAction('finalize', () => finalizeReject(job.jobId))}
+                      disabled={!!actionLoading}
+                      className="px-4 py-3 rounded-lg min-h-[44px] touch-manipulation text-sm border border-zinc-500 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                      {actionLoading === 'finalize' ? 'Finalizing…' : 'Finalize reject (refund issuer)'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            {job.status === 'disputed' && (
+              <p className="text-sm text-amber-200/90">Dispute opened. Awaiting arbiter resolution (release to completer or refund to issuer).</p>
             )}
           </div>
         )}

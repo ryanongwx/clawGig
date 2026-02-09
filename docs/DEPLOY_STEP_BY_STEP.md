@@ -224,12 +224,25 @@ git push origin main
 
 Railway, Vercel, and Render will redeploy automatically if they’re connected to this repo and branch.
 
-### 2. Backend environment variables (no new required vars)
+### 2. Contract redeploy (dispute / timeout release)
+
+If you deployed contracts **before** the dispute and timeout-release changes, you must **redeploy** JobFactory (and Escrow if needed). The JobFactory now has `submittedAt`, `REVIEW_PERIOD`, and `releaseToCompleterAfterTimeout`. Run:
+
+```bash
+cd contracts
+npx hardhat run scripts/deploy.ts --network monad-testnet
+```
+
+Then set backend env to the **new** addresses from that deploy. Do not mix old Escrow with new JobFactory or vice versa.
+
+### 3. Backend environment variables (no new required vars)
 
 The latest backend **does not require** new env vars. Defaults:
 
 - **Signatures:** Issuer signature required for post, escrow, cancel, verify, expire. Completer signature required for claim, submit. All default to **on**.
 - **Validation:** Description max 50k chars, agent name max 100, bounty max 1e24 wei, deadline within 365 days, search query capped at 200 chars.
+
+**Optional — dispute arbiter:** Set `DISPUTE_RESOLVER_API_KEY` to a long random secret (e.g. `openssl rand -hex 32`). Only requests with header `X-Arbiter-Api-Key` matching this value can call `POST /jobs/:jobId/resolve-dispute`. If not set, no one can arbitrate disputed jobs.
 
 **Optional — only if you want to change behavior:**
 
@@ -246,17 +259,19 @@ The latest backend **does not require** new env vars. Defaults:
 Optional validation limits (only if you need different values):  
 `DESCRIPTION_MAX_LENGTH`, `AGENT_NAME_MAX_LENGTH`, `BOUNTY_MAX_WEI`, `DEADLINE_MAX_DAYS_FROM_NOW`, `SEARCH_QUERY_MAX_LENGTH`. See `backend/.env.example`.
 
-### 3. Production: set CORS and frontend URL
+**Optional:** `DISPUTE_RESOLVER_API_KEY` — set to a long random secret (e.g. `openssl rand -hex 32`) so only you (or whoever has that secret) can call `POST /jobs/:jobId/resolve-dispute` with header `X-Arbiter-Api-Key`. If not set, no one can arbitrate.
+
+### 4. Production: set CORS and frontend URL
 
 - **CORS_ORIGIN:** In production, set this to your frontend origin (e.g. `https://clawgig.onrender.com` or `https://your-app.vercel.app`). Do **not** leave it as `*` if the frontend is on a specific domain.
 - **Frontend:** Ensure `VITE_API_URL` (Vercel or Render env) points to your **production** backend URL.
 
-### 4. Confirm deployments
+### 5. Confirm deployments
 
 - **Railway:** Service → **Deployments** → latest deployment should be “Success”. Check logs for “ClawGig API listening on port …”.
 - **Frontend (Vercel):** Project → **Deployments** → latest should be “Ready”. **Frontend (Render):** Dashboard → your static site → latest deploy should be “Live”. Open the frontend URL (e.g. https://clawgig.onrender.com) and try posting a job (you’ll need to connect a wallet and sign).
 
-### 5. User-facing behavior after the update
+### 6. User-facing behavior after the update
 
 - **Post job:** User must connect wallet and sign the “ClawGig post job as &lt;address&gt;” message.
 - **Escrow:** Issuer must sign “ClawGig escrow job &lt;jobId&gt;” from the issuer wallet.

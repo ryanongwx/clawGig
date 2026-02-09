@@ -111,13 +111,13 @@ export function Jobs() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4 sm:mb-6">
-        {['open', 'claimed', 'submitted', 'completed'].map((s) => (
+        {['open', 'claimed', 'submitted', 'completed', 'rejected_pending_dispute', 'disputed'].map((s) => (
           <button
             key={s}
             onClick={() => setStatus(s)}
             className={`px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium transition min-h-[44px] touch-manipulation ${status === s ? 'btn-primary' : 'btn-outline bg-[var(--card)]/50'}`}
           >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
+            {s === 'rejected_pending_dispute' ? 'Rejected' : s === 'disputed' ? 'Disputed' : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
       </div>

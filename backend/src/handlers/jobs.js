@@ -8,6 +8,7 @@ import {
   getEscrowUSDCAddress,
   getEscrowUSDCAtAddress,
   getContractReputation,
+  getProvider,
   getReputationScore,
   isMainnet,
 } from "../contracts.js";
@@ -59,7 +60,13 @@ const HANDLER = Object.freeze({
   getStats: "getStats",
   submitWork: "submitWork",
   verify: "verify",
+  dispute: "dispute",
+  resolveDispute: "resolveDispute",
+  finalizeReject: "finalizeReject",
+  claimTimeoutRelease: "claimTimeoutRelease",
   getReputation: "getReputation",
+  getReputationIssuer: "getReputationIssuer",
+  participatedJobs: "participatedJobs",
 });
 const TOKEN_USDC = 1;
 
@@ -412,6 +419,66 @@ function escapeRegex(s) {
 }
 
 /**
+ * GET /jobs/participated
+ * Query: address (required), role=issuer|completer|both (default both), status (optional), limit, offset.
+ * Returns jobs where the given address is issuer and/or completer. Lets agents view all jobs they participated in and see status (e.g. submitted = work in for issuer; rejected_pending_dispute = rejected for completer).
+ * Returns: { jobs, total, offset, limit, hasMore }. Each job includes expired when status=open and deadline < now.
+ */
+export async function participatedJobs(req, res) {
+  try {
+    const { address, role = "both", status, limit = 20, offset = 0 } = req.query;
+    if (!address || typeof address !== "string" || !address.trim()) {
+      logValidation(HANDLER.participatedJobs, "Missing or invalid address", {});
+      return res.status(400).json({ error: "Query parameter 'address' is required (wallet address)" });
+    }
+    let normalized;
+    try {
+      normalized = ethers.getAddress(address.trim());
+    } catch {
+      logValidation(HANDLER.participatedJobs, "Invalid address format", { address: address?.slice(0, 20) });
+      return res.status(400).json({ error: "Invalid address format" });
+    }
+    const roleVal = (role || "both").toLowerCase();
+    if (!["issuer", "completer", "both"].includes(roleVal)) {
+      return res.status(400).json({ error: "role must be issuer, completer, or both" });
+    }
+    const re = new RegExp(`^${escapeRegex(normalized)}$`, "i");
+    let filter;
+    if (roleVal === "issuer") {
+      filter = { issuer: re };
+    } else if (roleVal === "completer") {
+      filter = { completer: re };
+    } else {
+      filter = { $or: [{ issuer: re }, { completer: re }] };
+    }
+    if (status && typeof status === "string" && status.trim()) {
+      filter.status = status.trim();
+    }
+    const skip = Math.max(0, Number(offset) || 0);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+
+    const [list, total] = await Promise.all([
+      Job.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum + 1).lean(),
+      Job.countDocuments(filter),
+    ]);
+
+    const hasMore = list.length > limitNum;
+    const jobs = (hasMore ? list.slice(0, limitNum) : list).map((j) => ({
+      ...j,
+      expired: j.status === "open" && j.deadline && new Date(j.deadline) < new Date(),
+      needsAction:
+        (j.issuer && re.test(j.issuer) && j.status === "submitted") ||
+        (j.completer && re.test(j.completer) && (j.status === "rejected_pending_dispute" || j.status === "disputed")),
+    }));
+
+    return res.json({ jobs, total, offset: skip, limit: limitNum, hasMore });
+  } catch (err) {
+    logError(HANDLER.participatedJobs, err, { address: req.query?.address });
+    return res.status(500).json({ error: err.message || "Participated jobs fetch failed" });
+  }
+}
+
+/**
  * GET /jobs/browse
  * Query: status, limit, offset, q (search description), minBounty, maxBounty (wei string), bountyToken, issuer, deadlineBefore (ISO), deadlineAfter (ISO), includeExpired (default true for open jobs).
  * Returns: { jobs, total, offset, limit, hasMore }. Each job includes expired: true when status=open and deadline < now.
@@ -538,7 +605,7 @@ export async function submitWork(req, res) {
     }
     await Job.findOneAndUpdate(
       { jobId, status: "claimed" },
-      { ipfsHash: String(ipfsHash).trim(), status: "submitted" },
+      { ipfsHash: String(ipfsHash).trim(), status: "submitted", submittedAt: new Date() },
       { new: true }
     );
     const factory = getContractJobFactory();
@@ -603,16 +670,20 @@ export async function verify(req, res) {
         if (wssReopen) broadcastJobReopened(wssReopen, jobId);
         return res.json({ jobId, status: "open", reopened: true });
       }
-      await (await factory.setCompleted(jobId, false)).wait();
-      const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
-      if (chainEscrow) {
-        const deposit = await getEscrowDeposit(jobId, chainEscrow);
-        if (deposit > 0n) await (await factory.refundToIssuer(jobId)).wait();
-      }
-      await Job.updateOne({ jobId }, { status: "cancelled" });
+      // Reject (refund): 72h dispute window — do not call chain yet; completer can dispute within 72h.
+      const disputeDeadline = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await Job.updateOne(
+        { jobId },
+        { status: "rejected_pending_dispute", rejectedAt: new Date(), disputeDeadline }
+      );
       const wssReject = req.app.locals.wss;
-      if (wssReject) broadcastJobCancelled(wssReject, jobId, "reject_refund");
-      return res.json({ jobId, status: "cancelled", refunded: true });
+      if (wssReject) broadcastJobCancelled(wssReject, jobId, "reject_pending_dispute");
+      return res.json({
+        jobId,
+        status: "rejected_pending_dispute",
+        disputeDeadline: disputeDeadline.toISOString(),
+        message: "Rejection recorded. Completer has 72 hours to open a dispute. If no dispute, refund will be finalized after deadline.",
+      });
     }
 
     const newStatus = "completed";
@@ -744,6 +815,189 @@ export async function verify(req, res) {
   }
 }
 
+/** Dispute window: 72 hours (ms). */
+const DISPUTE_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * POST /jobs/:jobId/dispute
+ * Completer only, within 72h of reject. Marks job as disputed so arbiter can resolve.
+ */
+export async function dispute(req, res) {
+  try {
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const { completer } = req.body || {};
+    const job = await Job.findOne({ jobId, status: "rejected_pending_dispute" }).lean();
+    if (!job) {
+      logClientError(HANDLER.dispute, 404, "Job not found or not in rejected_pending_dispute", { jobId });
+      return res.status(404).json({ error: "Job not found or not in rejected_pending_dispute" });
+    }
+    const completerAddr = (completer || "").toLowerCase();
+    if (completerAddr !== (job.completer || "").toLowerCase()) {
+      return res.status(403).json({ error: "Only the job completer can open a dispute" });
+    }
+    const now = new Date();
+    if (job.disputeDeadline && new Date(job.disputeDeadline) < now) {
+      return res.status(400).json({ error: "Dispute window has passed" });
+    }
+    await Job.updateOne(
+      { jobId },
+      { status: "disputed", disputedAt: now }
+    );
+    return res.json({ jobId, status: "disputed", message: "Dispute opened. An arbiter can resolve via POST /jobs/:jobId/resolve-dispute." });
+  } catch (err) {
+    logError(HANDLER.dispute, err, { jobId: req.params?.jobId });
+    return res.status(500).json({ error: err.message || "Dispute failed" });
+  }
+}
+
+/**
+ * POST /jobs/:jobId/resolve-dispute
+ * Arbiter only (header X-Arbiter-Api-Key must match DISPUTE_RESOLVER_API_KEY).
+ * Body: { releaseToCompleter: boolean }. Calls completeAndRelease or setCompleted(false)+refundToIssuer.
+ */
+export async function resolveDispute(req, res) {
+  try {
+    const apiKey = req.headers["x-arbiter-api-key"];
+    const expected = process.env.DISPUTE_RESOLVER_API_KEY;
+    if (!expected || apiKey !== expected) {
+      logClientError(HANDLER.resolveDispute, 403, "Arbiter API key required or invalid", {});
+      return res.status(403).json({ error: "Arbiter API key required (X-Arbiter-Api-Key) or invalid" });
+    }
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const { releaseToCompleter } = req.body || {};
+    const job = await Job.findOne({ jobId, status: "disputed" }).lean();
+    if (!job) {
+      logClientError(HANDLER.resolveDispute, 404, "Job not found or not in disputed", { jobId });
+      return res.status(404).json({ error: "Job not found or not in disputed" });
+    }
+    const factory = getContractJobFactory();
+    if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+
+    if (releaseToCompleter) {
+      const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+      if (!chainEscrow) return res.status(503).json({ error: "Escrow not configured for this job token" });
+      const depositAmount = await getEscrowDeposit(jobId, chainEscrow);
+      if (!depositAmount || depositAmount === 0n) {
+        return res.status(400).json({ error: "No bounty escrowed for this job on-chain" });
+      }
+      await (await factory.completeAndRelease(jobId, job.completer, { gasLimit: 300000 })).wait();
+      await Job.updateOne({ jobId }, { status: "completed" });
+      const reputation = getContractReputation();
+      if (reputation) {
+        try { await reputation.recordCompletion(job.completer, true); } catch (e) { console.error("Reputation.recordCompletion failed:", e.message); }
+      }
+      const wss = req.app.locals.wss;
+      if (wss) broadcastJobCompleted(wss, jobId);
+      return res.json({ jobId, status: "completed", releaseToCompleter: true });
+    }
+
+    await (await factory.setCompleted(jobId, false)).wait();
+    const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+    if (chainEscrow) {
+      const deposit = await getEscrowDeposit(jobId, chainEscrow);
+      if (deposit > 0n) await (await factory.refundToIssuer(jobId)).wait();
+    }
+    await Job.updateOne({ jobId }, { status: "cancelled" });
+    const wss = req.app.locals.wss;
+    if (wss) broadcastJobCancelled(wss, jobId, "resolve_refund");
+    return res.json({ jobId, status: "cancelled", releaseToCompleter: false });
+  } catch (err) {
+    logError(HANDLER.resolveDispute, err, { jobId: req.params?.jobId });
+    return res.status(500).json({ error: err.message || "Resolve dispute failed" });
+  }
+}
+
+/**
+ * POST /jobs/:jobId/finalize-reject
+ * For job in rejected_pending_dispute past disputeDeadline. Calls setCompleted(false)+refundToIssuer and sets DB to cancelled.
+ * Anyone can call (idempotent).
+ */
+export async function finalizeReject(req, res) {
+  try {
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const job = await Job.findOne({ jobId, status: "rejected_pending_dispute" }).lean();
+    if (!job) {
+      logClientError(HANDLER.finalizeReject, 404, "Job not found or not in rejected_pending_dispute", { jobId });
+      return res.status(404).json({ error: "Job not found or not in rejected_pending_dispute" });
+    }
+    const now = new Date();
+    if (job.disputeDeadline && new Date(job.disputeDeadline) > now) {
+      return res.status(400).json({ error: "Dispute deadline has not passed yet" });
+    }
+    const factory = getContractJobFactory();
+    if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+    await (await factory.setCompleted(jobId, false)).wait();
+    const chainEscrow = job.bountyToken === "USDC" ? await getEscrowUSDCAddress() : await factory.escrow();
+    if (chainEscrow) {
+      const deposit = await getEscrowDeposit(jobId, chainEscrow);
+      if (deposit > 0n) await (await factory.refundToIssuer(jobId)).wait();
+    }
+    await Job.updateOne({ jobId }, { status: "cancelled" });
+    const wss = req.app.locals.wss;
+    if (wss) broadcastJobCancelled(wss, jobId, "finalize_refund");
+    return res.json({ jobId, status: "cancelled", finalized: true });
+  } catch (err) {
+    logError(HANDLER.finalizeReject, err, { jobId: req.params?.jobId });
+    return res.status(500).json({ error: err.message || "Finalize reject failed" });
+  }
+}
+
+/**
+ * POST /jobs/:jobId/claim-timeout-release
+ * For job in submitted: if on-chain REVIEW_PERIOD has elapsed, anyone can call releaseToCompleterAfterTimeout and we set DB to completed.
+ */
+export async function claimTimeoutRelease(req, res) {
+  try {
+    const parsed = parseJobId(req);
+    if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    const { jobId } = parsed;
+    const job = await Job.findOne({ jobId, status: "submitted" }).lean();
+    if (!job) {
+      logClientError(HANDLER.claimTimeoutRelease, 404, "Job not found or not in submitted", { jobId });
+      return res.status(404).json({ error: "Job not found or not in submitted" });
+    }
+    const factory = getContractJobFactory();
+    if (!factory) return res.status(503).json({ error: "Blockchain not configured" });
+    const REVIEW_PERIOD_SEC = 7 * 24 * 60 * 60;
+    const submittedAtChain = await factory.submittedAt(jobId);
+    if (!submittedAtChain || submittedAtChain === 0n) {
+      return res.status(400).json({ error: "No submittedAt on-chain for this job" });
+    }
+    const provider = getProvider();
+    const block = await provider.getBlock("latest");
+    const nowSec = block?.timestamp ?? Math.floor(Date.now() / 1000);
+    if (nowSec < Number(submittedAtChain) + REVIEW_PERIOD_SEC) {
+      return res.status(400).json({
+        error: "Review period has not elapsed yet",
+        submittedAt: String(submittedAtChain),
+        reviewPeriodSeconds: REVIEW_PERIOD_SEC,
+      });
+    }
+    await (await factory.releaseToCompleterAfterTimeout(jobId, { gasLimit: 200000 })).wait();
+    await Job.updateOne({ jobId }, { status: "completed" });
+    const reputation = getContractReputation();
+    if (reputation && job.completer) {
+      try { await reputation.recordCompletion(job.completer, true); } catch (e) { console.error("Reputation.recordCompletion failed:", e.message); }
+    }
+    const wss = req.app.locals.wss;
+    if (wss) broadcastJobCompleted(wss, jobId);
+    return res.json({ jobId, status: "completed", timeoutRelease: true });
+  } catch (err) {
+    logError(HANDLER.claimTimeoutRelease, err, { jobId: req.params?.jobId });
+    const msg = (err.message || "").toLowerCase();
+    if (msg.includes("invaliddeadline") || msg.includes("invalid deadline") || (err.data && err.data.startsWith("0x"))) {
+      return res.status(400).json({ error: "Review period not elapsed on-chain or job not in SUBMITTED state" });
+    }
+    return res.status(500).json({ error: err.message || "Claim timeout release failed" });
+  }
+}
+
 /**
  * GET /reputation/:address
  * Returns on-chain score for an agent (completed, successTotal, tier: 0=none, 1=bronze, 2=silver, 3=gold).
@@ -759,5 +1013,35 @@ export async function getReputation(req, res) {
   } catch (err) {
     logError(HANDLER.getReputation, err, { address: req.params?.address });
     return res.status(500).json({ error: err.message || "Reputation fetch failed" });
+  }
+}
+
+/**
+ * GET /reputation/issuer/:address
+ * Returns issuer stats from MongoDB: completedCount, rejectedCount, disputedCount (jobs where issuer rejected and completer disputed).
+ */
+export async function getReputationIssuer(req, res) {
+  try {
+    const { address } = req.params;
+    if (!address) return res.status(400).json({ error: "Missing address" });
+    const normalized = ethers.getAddress(address);
+    const [completedCount, rejectedCount, disputedCount] = await Promise.all([
+      Job.countDocuments({ issuer: { $regex: new RegExp(`^${normalized}$`, "i") }, status: "completed" }),
+      Job.countDocuments({
+        issuer: { $regex: new RegExp(`^${normalized}$`, "i") },
+        status: { $in: ["cancelled", "rejected_pending_dispute", "disputed"] },
+        rejectedAt: { $exists: true, $ne: null },
+      }),
+      Job.countDocuments({ issuer: { $regex: new RegExp(`^${normalized}$`, "i") }, status: "disputed" }),
+    ]);
+    return res.json({
+      address: normalized,
+      completedCount,
+      rejectedCount,
+      disputedCount,
+    });
+  } catch (err) {
+    logError(HANDLER.getReputationIssuer, err, { address: req.params?.address });
+    return res.status(500).json({ error: err.message || "Issuer reputation fetch failed" });
   }
 }

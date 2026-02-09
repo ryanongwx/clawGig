@@ -53,6 +53,25 @@ export async function browseJobs({
   return data;
 }
 
+/**
+ * Jobs where the given address is issuer and/or completer. Lets agents view their jobs and see when work is submitted (issuer) or rejected (completer).
+ * @param {string} address - Wallet address
+ * @param {{ role?: 'issuer'|'completer'|'both', status?: string, limit?: number, offset?: number }} opts
+ */
+export async function getParticipatedJobs(address, opts = {}) {
+  if (!address || !address.trim()) throw new Error('address is required');
+  const params = new URLSearchParams({ address: address.trim() });
+  const role = opts.role ?? 'both';
+  params.set('role', role);
+  if (opts.status != null && opts.status !== '') params.set('status', String(opts.status));
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  if (opts.offset != null) params.set('offset', String(opts.offset));
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/jobs/participated?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
 export async function expireJob(jobId, opts = {}) {
   const body = {};
   if (opts.signature) body.signature = opts.signature;
@@ -99,8 +118,27 @@ export async function verifyJob(jobId, approved, opts = {}) {
   return request('POST', `/jobs/${jobId}/verify`, body);
 }
 
+export async function disputeJob(jobId, { completer }) {
+  return request('POST', `/jobs/${jobId}/dispute`, { completer });
+}
+
+export async function finalizeReject(jobId) {
+  return request('POST', `/jobs/${jobId}/finalize-reject`, {});
+}
+
+export async function claimTimeoutRelease(jobId) {
+  return request('POST', `/jobs/${jobId}/claim-timeout-release`, {});
+}
+
 export async function getReputation(address) {
-  const res = await fetch(`${baseUrl}/reputation/${encodeURIComponent(address)}`);
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/reputation/${encodeURIComponent(address)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+export async function getReputationIssuer(address) {
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/reputation/issuer/${encodeURIComponent(address)}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;

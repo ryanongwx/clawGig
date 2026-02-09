@@ -38,6 +38,8 @@ export function getContractJobFactory() {
       "function cancelJobAsOwner(uint256 jobId) external",
       "function refundToIssuer(uint256 jobId) external",
       "function rejectAndReopen(uint256 jobId) external",
+      "function submittedAt(uint256 jobId) view returns (uint256)",
+      "function releaseToCompleterAfterTimeout(uint256 jobId) external",
       "event JobPosted(uint256 indexed jobId, address indexed issuer, bytes32 descriptionHash, uint256 bounty, uint256 deadline)",
     ];
     const signer = PRIVATE_KEY

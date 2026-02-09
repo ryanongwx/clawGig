@@ -47,6 +47,12 @@ contract JobFactory is Ownable, ReentrancyGuard {
     /// @dev jobId => token type: 0 = MON, 1 = USDC
     mapping(uint256 => uint8) public jobTokenType;
 
+    /// @dev jobId => timestamp when setSubmitted was called (for dispute timeout: release to completer if issuer does nothing)
+    mapping(uint256 => uint256) public submittedAt;
+
+    /// @dev Time window for issuer to approve/reject after submit. After this, anyone can call releaseToCompleterAfterTimeout.
+    uint256 public constant REVIEW_PERIOD = 7 days;
+
     // ---------- Events ----------
     event JobPosted(
         uint256 indexed jobId,
@@ -152,6 +158,21 @@ contract JobFactory is Ownable, ReentrancyGuard {
         if (j.issuer == address(0)) revert JobNotFound();
         if (j.status != STATUS_CLAIMED) revert JobNotOpen();
         j.status = STATUS_SUBMITTED;
+        submittedAt[jobId] = block.timestamp;
+    }
+
+    /**
+     * @notice If issuer did not approve or reject within REVIEW_PERIOD, anyone can release bounty to completer (dispute protection).
+     */
+    function releaseToCompleterAfterTimeout(uint256 jobId) external nonReentrant {
+        JobRecord storage j = _jobs[jobId];
+        if (j.issuer == address(0)) revert JobNotFound();
+        if (j.status != STATUS_SUBMITTED) revert JobNotOpen();
+        if (block.timestamp < submittedAt[jobId] + REVIEW_PERIOD) revert InvalidDeadline();
+        address payable completer = payable(j.completer);
+        j.status = STATUS_COMPLETED;
+        address esc = jobTokenType[jobId] == TOKEN_USDC ? escrowUSDC : escrow;
+        IEscrow(esc).release(jobId, completer);
     }
 
     /**

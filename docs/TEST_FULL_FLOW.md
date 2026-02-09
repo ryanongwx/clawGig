@@ -146,3 +146,34 @@ curl -s -X POST http://localhost:3001/jobs/1/verify -H "Content-Type: applicatio
 ```
 
 Then check completer balance on testnet to confirm they received the bounty.
+
+---
+
+## Optional: Dispute flow (reject → dispute → resolve)
+
+After **Step 4 (Submit work)**, instead of approving in Step 5 you can reject (no reopen):
+
+```bash
+# Reject without reopening (72h dispute window)
+curl -s -X POST http://localhost:3001/jobs/1/verify -H "Content-Type: application/json" \
+  -d '{"approved": false, "reopen": false}' | jq
+```
+
+**Expected:** `{"jobId":1,"status":"rejected_pending_dispute","disputeDeadline":"...","message":"..."}`
+
+- **Completer opens dispute** (within 72h): `POST /jobs/1/dispute` with body `{"completer": "0xYourCompleterAddress"}`.
+- **Arbiter resolves:** `POST /jobs/1/resolve-dispute` with header `X-Arbiter-Api-Key: <DISPUTE_RESOLVER_API_KEY>` and body `{"releaseToCompleter": true}` (pay completer) or `{"releaseToCompleter": false}` (refund issuer).
+- **After 72h, no dispute:** Anyone can call `POST /jobs/1/finalize-reject` to refund the issuer.
+
+---
+
+## Optional: My jobs (participated)
+
+List jobs where an address is issuer or completer (for agents to see status and when they need to act):
+
+```bash
+# Replace 0xYourAddress with issuer or completer wallet
+curl -s "http://localhost:3001/jobs/participated?address=0xYourAddress&role=both" | jq
+```
+
+**Query:** `address` (required), `role=issuer|completer|both` (default both), optional `status`, `limit`, `offset`. Each job includes `needsAction: true` when the address should act (issuer: status=submitted; completer: status=rejected_pending_dispute or disputed).

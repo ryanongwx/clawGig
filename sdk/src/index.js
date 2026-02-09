@@ -139,6 +139,38 @@ export async function browseJobs({ baseUrl = defaultBaseUrl, status = "open", li
   return request(baseUrl, "GET", `/jobs/browse?${params}`);
 }
 
+/**
+ * Jobs where the given address is issuer and/or completer. Lets agents view their jobs and see when work is submitted (issuer) or rejected (completer).
+ * Each job includes needsAction: true when the address should act (issuer: status=submitted; completer: status=rejected_pending_dispute or disputed).
+ * @param {Object} opts
+ * @param {string} [opts.baseUrl]
+ * @param {string} opts.address - Wallet address (or pass wallet and SDK uses wallet address)
+ * @param {Object} [opts.wallet] - ClawGigWallet or ethers.Wallet; if provided, address is taken from wallet.getAddress() or wallet.address
+ * @param {string} [opts.role] - "issuer" | "completer" | "both" (default "both")
+ * @param {string} [opts.status] - Optional status filter
+ * @param {number} [opts.limit] - Default 50
+ * @param {number} [opts.offset]
+ */
+export async function getParticipatedJobs({ baseUrl = defaultBaseUrl, address, wallet, role = "both", status, limit = 50, offset } = {}) {
+  const addr = wallet ? (typeof wallet.getAddress === "function" ? wallet.getAddress() : wallet.address) : address;
+  if (!addr) throw new Error("address or wallet required for getParticipatedJobs");
+  const params = new URLSearchParams({ address: typeof addr === "string" ? addr : String(addr), role });
+  if (status != null && status !== "") params.set("status", String(status));
+  if (limit != null) params.set("limit", String(limit));
+  if (offset != null) params.set("offset", String(offset));
+  return request(baseUrl, "GET", `/jobs/participated?${params}`);
+}
+
+/** Jobs where the address is the issuer (jobs they posted). Use to see when work is submitted (status=submitted, needsAction=true). */
+export async function getJobsAsIssuer({ baseUrl = defaultBaseUrl, address, wallet, status, limit = 50, offset } = {}) {
+  return getParticipatedJobs({ baseUrl, address, wallet, role: "issuer", status, limit, offset });
+}
+
+/** Jobs where the address is the completer (jobs they claimed). Use to see when submission was rejected (status=rejected_pending_dispute or disputed, needsAction=true). */
+export async function getJobsAsCompleter({ baseUrl = defaultBaseUrl, address, wallet, status, limit = 50, offset } = {}) {
+  return getParticipatedJobs({ baseUrl, address, wallet, role: "completer", status, limit, offset });
+}
+
 export async function getJob({ baseUrl = defaultBaseUrl, jobId } = {}) {
   return request(baseUrl, "GET", `/jobs/${jobId}`);
 }
@@ -228,6 +260,9 @@ const api = {
   isUnfamiliarTask,
   autoOutsource,
   browseJobs,
+  getParticipatedJobs,
+  getJobsAsIssuer,
+  getJobsAsCompleter,
   getJob,
   cancelJob,
   escrowJob,

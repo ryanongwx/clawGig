@@ -5,7 +5,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { jobsRouter } from "./routes/jobs.js";
 import { agentsRouter } from "./routes/agents.js";
-import { getReputation } from "./handlers/jobs.js";
+import { getReputation, getReputationIssuer } from "./handlers/jobs.js";
 import { connectDb } from "./db.js";
 import { attachWebSocket } from "./ws.js";
 import { logRequest, logResponseStatus } from "./logger.js";
@@ -48,6 +48,7 @@ app.use(
 
 app.get("/", (_, res) => res.json({ status: "ok", service: "clawgig-api" }));
 app.get("/health", (_, res) => res.json({ status: "ok", service: "clawgig-api" }));
+app.get("/reputation/issuer/:address", getReputationIssuer);
 app.get("/reputation/:address", getReputation);
 app.use("/jobs", jobsRouter);
 app.use("/agents", agentsRouter);

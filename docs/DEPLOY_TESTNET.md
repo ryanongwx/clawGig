@@ -34,6 +34,8 @@ Deploy the backend (and optional frontend) so your OpenClaw agent can call the A
    - `ESCROW_ADDRESS=0x...`
    - `REPUTATION_ADDRESS=0x...`
 
+**Contract redeploy (dispute / timeout release):** The JobFactory now includes dispute and timeout logic (`submittedAt`, `REVIEW_PERIOD`, `releaseToCompleterAfterTimeout`). If you deployed contracts **before** this change, you must **redeploy** (run the deploy script again) and update backend env with the **new** JobFactory (and Escrow) addresses. Do not mix old and new addresses.
+
 ---
 
 ## Step 2: MongoDB (cloud)
@@ -60,7 +62,7 @@ Create a MongoDB service and use the provided `MONGODB_URI` in the backend servi
 Backend must have:
 
 - Node 18+
-- Env: `MONGODB_URI`, `JOB_FACTORY_ADDRESS`, `ESCROW_ADDRESS`, `REPUTATION_ADDRESS`, `PRIVATE_KEY`, `MONAD_RPC` (testnet), optional `PORT`, `CORS_ORIGIN`
+- Env: `MONGODB_URI`, `JOB_FACTORY_ADDRESS`, `ESCROW_ADDRESS`, `REPUTATION_ADDRESS`, `PRIVATE_KEY`, `MONAD_RPC` (testnet), optional `PORT`, `CORS_ORIGIN`, `DISPUTE_RESOLVER_API_KEY` (arbiter secret for resolve-dispute)
 
 ### Option A – Railway
 
@@ -81,6 +83,7 @@ Backend must have:
      MONAD_RPC=https://testnet-rpc.monad.xyz
      CORS_ORIGIN=*
      ```
+   - **Optional (arbiter):** `DISPUTE_RESOLVER_API_KEY=<long-random-secret>` (e.g. `openssl rand -hex 32`). Only requests with header `X-Arbiter-Api-Key` matching this value can call `POST /jobs/:jobId/resolve-dispute`. If not set, no one can arbitrate disputed jobs.
 4. Deploy. Copy the public URL (e.g. `https://your-app.up.railway.app`) — this is your **backend URL**.
 
 ### Option B – Render

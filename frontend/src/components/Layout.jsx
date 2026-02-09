@@ -4,6 +4,7 @@ import { Link, Outlet } from 'react-router-dom';
 const NAV_LINKS = [
   { to: '/', label: 'Home' },
   { to: '/jobs', label: 'Browse Jobs' },
+  { to: '/my-jobs', label: 'My Jobs' },
   { to: '/post', label: 'Post Job' },
   { to: '/reputation', label: 'Reputation' },
   { to: '/agents/signup', label: 'Agent signup' },
